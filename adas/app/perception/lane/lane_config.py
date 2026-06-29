@@ -9,11 +9,6 @@ IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 480
 
 
-ROI_TOP = int(IMAGE_HEIGHT * 0.6)       # Start at 60% down (y=288)
-ROI_BOTTOM = IMAGE_HEIGHT               # Full bottom (y=480)
-ROI_LEFT = 0                            # Full width
-ROI_RIGHT = IMAGE_WIDTH
-
 # Perspective transform (bird's-eye view) source points
 # These define a trapezoid in the image that maps to a rectangle in top-down view
 # Tuned for Pi Camera Module 3's wide FOV (~102°-120°) at 640x480
@@ -32,31 +27,24 @@ WARP_DST = [
     [int(IMAGE_WIDTH * 0.8), IMAGE_HEIGHT],
 ]
 
+
 # Warped (bird's-eye) output dimensions
-WARP_WIDTH = 320
+WARP_WIDTH = 640
 WARP_HEIGHT = 480
 
-# Hough Transform parameters for lane line detection
-HOUGH_RHO = 2                     # Distance resolution 
-HOUGH_THETA = 1                   # Angular resolution 
-HOUGH_THRESHOLD = 50              # Min intersections to detect a line
-HOUGH_MIN_LINE_LENGTH = 40        # Min line segment length (pixels)
-HOUGH_MAX_LINE_GAP = 100          # Max gap between segments to merge (pixels)
+# Sliding window parameters for lane detection in warped bird's-eye view
+N_WINDOWS = 9                     # Number of sliding windows vertically
+MARGIN = 80                       # Horizontal search margin on each side (pixels in warped space)
+MIN_PIXELS = 50                   # Minimum pixels to re-center the window
 
-# Lane line slope filtering (in image space, before warp)
-# Reject lines with slopes outside typical lane line range
-# Left lane: positive slope (bottom-left to top-right), right lane: negative slope
-SLOPE_MIN = 0.3                   # Min absolute slope to filter near-horizontal noise
-SLOPE_MAX = 2.0                   # Max absolute slope to filter near-vertical noise
+# Lane polynomial fit parameters
+POLYFIT_DEGREE = 2                # Polynomial degree for lane fitting (2 = quadratic)
 
-# Separate left vs right lanes by x-position at the bottom of ROI
-LANE_CENTER_X = IMAGE_WIDTH // 2  # Center divider between left/right lanes
+# Lane width validation (in pixels in warped bird's-eye space)
+LANE_WIDTH_MIN = 150              # Minimum expected lane width
+LANE_WIDTH_MAX = 500              # Maximum expected lane width
 
-# Lane width validation (in pixels at bottom of image)
-LANE_WIDTH_MIN = 150              # Minimum pixel distance between left & right lanes at bottom
-LANE_WIDTH_MAX = 500              # Maximum pixel distance between left & right lanes at bottom
-
-# Smoothing (exponential moving average) for lane line averages
+# Smoothing (exponential moving average) for polynomial coefficients
 SMOOTHING_ALPHA = 0.3             # Lower = smoother but more lag
 
 # Image preprocessing
@@ -73,6 +61,5 @@ YELLOW_MIN_S = 80                 # Yellow min saturation
 YELLOW_MIN_V = 100                # Yellow min value
 
 # Debug / visualization
-SHOW_HOUGH_LINES = False          # Draw raw Hough lines on output
 SHOW_LANE_LINES = True            # Draw final filtered lane lines
 SHOW_WARP = False                 # Show bird's-eye view
