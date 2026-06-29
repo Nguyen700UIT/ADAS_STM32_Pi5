@@ -61,4 +61,8 @@ class LaneDetector:
         edge = cv.Canny(gaussianBlurred, self.canny_low, self.canny_high)
         return edge
     
-        
+    def warp_perspective(self, frame):
+        transformedFrame = cv.warpPerspective(frame, self.warp_matrix, (self.warp_width, self.warp_height))
+        return transformedFrame
+
+    
