@@ -58,8 +58,9 @@ WHITE_THRESHOLD = 200             # White line intensity threshold (0-255)
 YELLOW_LOW_H = 15                 # Yellow hue low (HSV)
 YELLOW_HIGH_H = 35                # Yellow hue high (HSV)
 YELLOW_MIN_S = 80                 # Yellow min saturation
+YELLOW_MAX_S = 255
 YELLOW_MIN_V = 100                # Yellow min value
-
+YELLOW_MAX_V = 255
 # Debug / visualization
 SHOW_LANE_LINES = True            # Draw final filtered lane lines
 SHOW_WARP = False                 # Show bird's-eye view

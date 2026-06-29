@@ -49,20 +49,38 @@ class LaneDetector:
         self.yellow_low_h = lane_config.YELLOW_LOW_H
         self.yellow_high_h = lane_config.YELLOW_HIGH_H
         self.yellow_min_s = lane_config.YELLOW_MIN_S
+        self.yellow_max_s = lane_config.YELLOW_MAX_S
         self.yellow_min_v = lane_config.YELLOW_MIN_V
+        self.yellow_max_v = lane_config.YELLOW_MAX_V
 
         # Debug flags
         self.show_lane_lines = lane_config.SHOW_LANE_LINES
         self.show_warp = lane_config.SHOW_WARP
 
     def preprocess(self, frame):
-        grayFrame = cv.cvtColor(frame, cv.COLOR_RGB2GRAY)
-        gaussianBlurred = cv.GaussianBlur(grayFrame, (self.blur_kernel, self.blur_kernel), 0)
-        edge = cv.Canny(gaussianBlurred, self.canny_low, self.canny_high)
-        return edge
+        gaussianBlurred = cv.GaussianBlur(frame, (self.blur_kernel, self.blur_kernel), 0)
+        return gaussianBlurred
     
-    def warp_perspective(self, frame):
-        transformedFrame = cv.warpPerspective(frame, self.warp_matrix, (self.warp_width, self.warp_height))
+    def warp_perspective(self, preprocessed_frame):
+        transformedFrame = cv.warpPerspective(preprocessed_frame, self.warp_matrix, (self.warp_width, self.warp_height))
         return transformedFrame
+    
+    def thresholding(self, warped_frame):
+        hsv = cv.cvtColor(warped_frame, cv.COLOR_RGB2HSV)
+        
+        lower_white = np.array([0, 0, self.white_threshold])
+        upper_white = np.array([180, 30, 255])
 
+        lower_yellow = np.array([self.yellow_low_h, self.yellow_min_s, self.yellow_min_v])
+        upper_yellow = np.array([self.yellow_high_h, self.yellow_max_s, self.yellow_max_v])
+
+        white_mask = cv.inRange(hsv, lower_white, upper_white)
+        yellow_mask = cv.inRange(hsv, lower_yellow, upper_yellow)
+
+        binary = cv.bitwise_or(white_mask, yellow_mask)
+
+        kernel = np.ones((3,3))
+        binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
+        binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel)
+        return binary
     
