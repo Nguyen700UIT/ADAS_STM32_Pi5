@@ -84,3 +84,4 @@ class LaneDetector:
         binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel)
         return binary
     
+    
