@@ -1,0 +1,2 @@
+../Core/Src/hc_sr04.c:12:6:HCSR04_Trigger_Update	16	static
+../Core/Src/hc_sr04.c:34:6:HAL_GPIO_EXTI_Callback	24	static
