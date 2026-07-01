@@ -1,5 +1,0 @@
-../Core/Src/uart_comm.c:21:6:UART_Comm_Init	1
-../Core/Src/uart_comm.c:29:14:UART_Comm_Get_Command	1
-../Core/Src/uart_comm.c:33:6:UART_Comm_Send_Sensor_Data	1
-../Core/Src/uart_comm.c:51:6:UART_Comm_Failsafe_Check	2
-../Core/Src/uart_comm.c:60:6:UART_Comm_Rx_StateMachine	12
