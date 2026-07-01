@@ -7,24 +7,26 @@ Format: RGB888
 
 IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 480
+IMAGE_MAX_X = IMAGE_WIDTH - 1
+IMAGE_MAX_Y = IMAGE_HEIGHT - 1
 
 
 # Perspective transform (bird's-eye view) source points
 # These define a trapezoid in the image that maps to a rectangle in top-down view
 # Tuned for Pi Camera Module 3's wide FOV (~102°-120°) at 640x480
 WARP_SRC = [
-    [int(IMAGE_WIDTH * 0.15), IMAGE_HEIGHT],           # Bottom-left
-    [int(IMAGE_WIDTH * 0.45), int(IMAGE_HEIGHT * 0.6)], # Top-left
-    [int(IMAGE_WIDTH * 0.55), int(IMAGE_HEIGHT * 0.6)], # Top-right
-    [int(IMAGE_WIDTH * 0.85), IMAGE_HEIGHT],            # Bottom-right
+    [int(IMAGE_WIDTH * 0.35), IMAGE_MAX_Y],             # Bottom-left
+    [int(IMAGE_WIDTH * 0.60), int(IMAGE_HEIGHT * 0.6)],  # Top-left
+    [int(IMAGE_WIDTH * 0.75), int(IMAGE_HEIGHT * 0.6)],  # Top-right
+    [int(IMAGE_WIDTH * 0.94), IMAGE_MAX_Y],              # Bottom-right
 ]
 
 # Perspective transform destination points (bird's-eye view rectangle)
 WARP_DST = [
-    [int(IMAGE_WIDTH * 0.2), IMAGE_HEIGHT],
+    [int(IMAGE_WIDTH * 0.2), IMAGE_MAX_Y],
     [int(IMAGE_WIDTH * 0.2), 0],
     [int(IMAGE_WIDTH * 0.8), 0],
-    [int(IMAGE_WIDTH * 0.8), IMAGE_HEIGHT],
+    [int(IMAGE_WIDTH * 0.8), IMAGE_MAX_Y],
 ]
 
 
