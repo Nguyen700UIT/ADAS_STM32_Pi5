@@ -52,8 +52,7 @@ SMOOTHING_ALPHA = 0.3             # Lower = smoother but more lag
 
 # Image preprocessing
 GAUSSIAN_BLUR_KERNEL = 5          # Kernel size for blur (odd number)
-CANNY_LOW_THRESHOLD = 50          # Canny edge detection low threshold
-CANNY_HIGH_THRESHOLD = 150        # Canny edge detection high threshold
+
 
 # Color space thresholds for white & yellow lane lines
 # (tuned for dashcam video converted to HSV via BGR2HSV)

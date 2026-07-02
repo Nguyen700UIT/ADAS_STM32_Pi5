@@ -331,11 +331,3 @@ Returns `None` if no valid lanes found.
 > **Note:** White saturation upper bound is hardcoded at `S ≤ 30` in `thresholding()`.
 > Yellow max saturation/value are both `255`.
 
-## Test Script
-
-```bash
-cd adas/app/perception/lane
-py test_on_video.py
-```
-
-Press `q` in the OpenCV window to quit early. Output video is saved to `output_test_video.mp4`.

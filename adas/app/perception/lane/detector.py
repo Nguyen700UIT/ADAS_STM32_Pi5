@@ -42,8 +42,7 @@ class LaneDetector:
 
         # Preprocessing
         self.blur_kernel = lane_config.GAUSSIAN_BLUR_KERNEL
-        self.canny_low = lane_config.CANNY_LOW_THRESHOLD
-        self.canny_high = lane_config.CANNY_HIGH_THRESHOLD
+
 
         # White / yellow color thresholds
         self.white_threshold = lane_config.WHITE_THRESHOLD
