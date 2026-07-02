@@ -67,11 +67,13 @@ class LaneDetector:
         return transformedFrame
     
     def thresholding(self, warped_frame):
-        hsv = cv.cvtColor(warped_frame, cv.COLOR_RGB2HSV)
+        hsv = cv.cvtColor(warped_frame, cv.COLOR_BGR2HSV)
         
+        # White: low saturation (gray/white, S<=30), high value (bright, V>=threshold)
         lower_white = np.array([0, 0, self.white_threshold])
         upper_white = np.array([180, 30, 255])
 
+        # Yellow: narrow hue range for yellow lane lines
         lower_yellow = np.array([self.yellow_low_h, self.yellow_min_s, self.yellow_min_v])
         upper_yellow = np.array([self.yellow_high_h, self.yellow_max_s, self.yellow_max_v])
 
@@ -80,9 +82,9 @@ class LaneDetector:
 
         binary = cv.bitwise_or(white_mask, yellow_mask)
 
-        kernel = np.ones((3,3))
+        # Clean up noise with small kernel to preserve lane line detail
+        kernel = np.ones((3,3), np.uint8)
         binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
-        binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel)
         return binary
 
 
@@ -96,6 +98,7 @@ class LaneDetector:
         left_lane_inds = []
         right_lane_inds = []
         windows = []
+        debug = {}
 
         for window in range(self.n_windows):
             win_y_low = binary.shape[0] - (window + 1) * window_height
@@ -136,8 +139,21 @@ class LaneDetector:
         left_lane_inds = np.concatenate(left_lane_inds) if left_lane_inds else np.array([], dtype=np.int64)
         right_lane_inds = np.concatenate(right_lane_inds) if right_lane_inds else np.array([], dtype=np.int64)
 
-        left_fit = np.polyfit(nonzeroy[left_lane_inds], nonzerox[left_lane_inds], self.polyfit_degree)
-        right_fit = np.polyfit(nonzeroy[right_lane_inds], nonzerox[right_lane_inds], self.polyfit_degree)
+        try:
+            left_fit = np.polyfit(
+                nonzeroy[left_lane_inds],
+                nonzerox[left_lane_inds],
+                self.polyfit_degree
+            )
+
+            right_fit = np.polyfit(
+                nonzeroy[right_lane_inds],
+                nonzerox[right_lane_inds],
+                self.polyfit_degree
+            )
+
+        except (np.linalg.LinAlgError, ValueError, TypeError):
+            return None, None, debug if return_debug else (None, None)
         
         if not return_debug:
             return left_fit, right_fit
@@ -193,7 +209,7 @@ class LaneDetector:
         return center_fitx
 
     def draw_lane_mask(self, ploty, left_fitx, right_fitx):
-        mask = np.zeros((self.warp_height, self.warp_width, 3), dtype=np.unint8)
+        mask = np.zeros((self.warp_height, self.warp_width, 3), dtype=np.uint8)
         pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
         pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
         pts = np.hstack((pts_left, pts_right)).astype(np.int32)
@@ -206,7 +222,7 @@ class LaneDetector:
         return inversed_mask
 
     def overlay_lane(self, frame, inversed_mask):
-        return cv.addWeighted(frame, 1.00, inversed_mask, 0.4, 0)
+        return cv.addWeighted(frame, 1.00, inversed_mask, 0.6, 0)
 
 
     def find_lane(self, binary):
@@ -221,6 +237,15 @@ class LaneDetector:
             right_base,
             return_debug=True,
         )
+
+        # If sliding windows failed to find lanes, fall back to previous fit
+        if left_fit is None or right_fit is None:
+            if self.prev_left_fit is not None:
+                left_fit = self.prev_left_fit
+                right_fit = self.prev_right_fit
+            else:
+                return None
+
         ploty, left_fitx, right_fitx = self.generate_lane_points(left_fit, right_fit)
         valid = self.validate_lane(left_fitx, right_fitx)
 
@@ -246,23 +271,77 @@ class LaneDetector:
         "debug": debug,
         }   
     
-    def process_frame(self, frame):
-        frame = self.preprocess(frame)
-        warped = self.warp_perspective(frame)
+    def _make_debug_view(self, binary, warped, lane_mask_resized, output, frame_small):
+        """Create a 2x2 composite debug view of the lane detection pipeline."""
+        h, w = self.img_height, self.img_width
+        # Convert binary (single channel) to 3-channel BGR for display
+        binary_3ch = cv.cvtColor(binary, cv.COLOR_GRAY2BGR)
+
+        # Resize warped and binary to the same size for the debug grid
+        warped_small = cv.resize(warped, (w, h))
+        binary_small = cv.resize(binary_3ch, (w, h))
+        frame_small_bgr = cv.resize(frame_small, (w, h))
+
+        # Stack top row: original (resized) | binary
+        top = np.hstack((frame_small_bgr, binary_small))
+        # Stack bottom row: warped | output (resized)
+        output_small = cv.resize(output, (w, h))
+        lane_small = cv.resize(lane_mask_resized, (w, h)) if lane_mask_resized is not None else np.zeros((h, w, 3), dtype=np.uint8)
+        bottom = np.hstack((warped_small, output_small))
+
+        debug_view = np.vstack((top, bottom))
+        # Add labels
+        cv.putText(debug_view, "Input", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv.putText(debug_view, "Binary", (w + 10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv.putText(debug_view, "Warped", (10, h + 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv.putText(debug_view, "Output", (w + 10, h + 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        return debug_view
+
+    def process_frame(self, frame, return_debug=False):
+        original = frame
+        # Resize frame to match configured dimensions if needed
+        if frame.shape[1] != self.img_width or frame.shape[0] != self.img_height:
+            frame = cv.resize(frame, (self.img_width, self.img_height))
+
+        preprocessed = self.preprocess(frame)
+        warped = self.warp_perspective(preprocessed)
         binary = self.thresholding(warped)
 
         result = self.find_lane(binary)
-        if result is None:
-            return frame
+        output = None
+        lane_mask_resized = None
 
-        lane_mask = self.draw_lane_mask(
-            result["ploty"],
-            result["left_fitx"],
-            result["right_fitx"]
-        )
+        if result is not None:
+            lane_mask = self.draw_lane_mask(
+                result["ploty"],
+                result["left_fitx"],
+                result["right_fitx"]
+            )
+            lane_mask = self.inverse_warp(lane_mask)
+            # Resize lane mask to match original frame dimensions if needed
+            if lane_mask.shape[1] != original.shape[1] or lane_mask.shape[0] != original.shape[0]:
+                lane_mask_resized = cv.resize(lane_mask, (original.shape[1], original.shape[0]))
+            else:
+                lane_mask_resized = lane_mask
+            output = self.overlay_lane(original, lane_mask_resized)
 
-        lane_mask = self.inverse_warp(lane_mask)
-        output = self.overlay_lane(frame, lane_mask)
+        if output is None:
+            if original.shape[1] != self.img_width or original.shape[0] != self.img_height:
+                output = cv.resize(frame, (original.shape[1], original.shape[0]))
+            else:
+                output = frame
+
+        if return_debug:
+            # Add lane overlay info text on the output panel
+            if result is not None:
+                lane_width = np.mean(result["right_fitx"] - result["left_fitx"])
+                cv.putText(output, f"Lane width: {lane_width:.0f}px", (10, 60),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            else:
+                cv.putText(output, "No lane detected", (10, 60),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            debug_view = self._make_debug_view(binary, warped, lane_mask_resized, output, frame)
+            return output, debug_view
 
         return output
     
