@@ -82,7 +82,7 @@ class LaneDetector:
         binary = cv.bitwise_or(white_mask, yellow_mask)
 
         # Clean up noise with small kernel to preserve lane line detail
-        kernel = np.ones((3,3), np.uint8)
+        kernel = cv.getStructuringElement(cv.MORPH_RECT,(5, 15))
         binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
         return binary
 
@@ -180,7 +180,7 @@ class LaneDetector:
             return False
         
         return True
-    
+
     def smooth_lane(self, left_fit, right_fit):
 
         if self.prev_left_fit is None:
