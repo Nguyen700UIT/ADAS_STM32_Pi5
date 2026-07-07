@@ -1,0 +1,4 @@
+../Core/Src/hc_sr04.c:7:6:HC_SR04_Init	16	static
+../Core/Src/hc_sr04.c:13:6:HC_SR04_Trigger	16	static
+../Core/Src/hc_sr04.c:19:6:HC_SR04_IC_Callback	16	static
+../Core/Src/hc_sr04.c:55:10:HC_SR04_Get_Min_Distance	16	static
