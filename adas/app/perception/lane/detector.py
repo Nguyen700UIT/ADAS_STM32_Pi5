@@ -32,6 +32,9 @@ class LaneDetector:
         self.prev_left_fit = None
         self.prev_right_fit = None
 
+        self.consecutive_invalid_frames = lane_config.CONSECUTIVE_INVALID_FRAMES
+        self.max_invalid_frames = lane_config.MAX_INVALID_FRAMES
+        
         self.blur_kernel = lane_config.GAUSSIAN_BLUR_KERNEL
         self.white_threshold = lane_config.WHITE_THRESHOLD
         self.yellow_low_h = lane_config.YELLOW_LOW_H
@@ -52,7 +55,7 @@ class LaneDetector:
         warp_matrix, _ = self._get_warp_matrices(w, h)
         return cv.warpPerspective(
             preprocessed_frame,
-            warp_matrix,
+            warp_matrix,    
             (w, h),
         )
 
@@ -101,19 +104,23 @@ class LaneDetector:
             51,
             -8,
         )
-        edge_mask = cv.Canny(gray, 30, 100)
-        edge_mask = cv.dilate(edge_mask, np.ones((3, 3), dtype=np.uint8), iterations=1)
+        edge_mask = cv.Canny(gray, 50, 150)
+        edge_mask = cv.dilate(edge_mask, np.ones((3,3), dtype=np.uint8), iterations=1)
 
         kernel = np.ones((3, 3), dtype=np.uint8)
         binary = cv.bitwise_or(color_mask, adaptive_mask)
         binary = cv.bitwise_or(binary, edge_mask)
         binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
+
         return binary
 
     def sliding_windows(self, binary, left_base, right_base, return_debug=False):
         window_height = binary.shape[0] // self.n_windows
         curr_left = int(left_base)
         curr_right = int(right_base)
+
+        left_shifts = []
+        right_shifts = []
 
         nonzeroy, nonzerox = binary.nonzero()
         left_lane_inds = []
@@ -123,6 +130,19 @@ class LaneDetector:
         for window in range(self.n_windows):
             win_y_low = binary.shape[0] - (window + 1) * window_height
             win_y_high = binary.shape[0] - window * window_height
+            win_y_mid = (win_y_low + win_y_high) // 2
+
+            if window > 0:
+                if self.prev_left_fit is not None:
+                    curr_left = int(np.polyval(self.prev_left_fit, win_y_mid))
+                elif len(left_shifts) > 0:
+                    curr_left += int(np.mean(left_shifts))
+
+                if self.prev_right_fit is not None:
+                    curr_right = int(np.polyval(self.prev_right_fit, win_y_mid))
+                elif len(right_shifts) > 0:
+                    curr_right += int(np.mean(right_shifts))
+
             win_xleft_low = curr_left - self.margin
             win_xleft_high = curr_left + self.margin
             win_xright_low = curr_right - self.margin
@@ -152,9 +172,22 @@ class LaneDetector:
             right_lane_inds.append(good_right)
 
             if len(good_left) > self.min_pixels:
-                curr_left = int(np.mean(nonzerox[good_left]))
+                next_left = int(np.mean(nonzerox[good_left]))
+                if window > 0:
+                    left_shifts.append(next_left - curr_left)
+                curr_left = next_left
+            else:
+                if len(left_shifts) > 0:
+                    curr_left += int(np.mean(left_shifts))
+
             if len(good_right) > self.min_pixels:
-                curr_right = int(np.mean(nonzerox[good_right]))
+                next_right = int(np.mean(nonzerox[good_right]))
+                if window > 0:
+                    right_shifts.append(next_right - curr_right)
+                curr_right = next_right
+            else:
+                if len(right_shifts) > 0:
+                    curr_right += int(np.mean(right_shifts))
 
         left_lane_inds = np.concatenate(left_lane_inds) if left_lane_inds else np.array([], dtype=np.int64)
         right_lane_inds = np.concatenate(right_lane_inds) if right_lane_inds else np.array([], dtype=np.int64)
@@ -189,10 +222,16 @@ class LaneDetector:
         return (alpha * current_fit) + ((1.0 - alpha) * previous_fit)
 
     def find_lane(self, binary):
-        hist = np.sum(binary[binary.shape[0] // 2 :, :], axis=0)
-        mid = int(hist.shape[0] / 2)
-        left_base = int(np.argmax(hist[:mid]))
-        right_base = int(np.argmax(hist[mid:]) + mid)
+        if self.prev_left_fit is not None and self.prev_right_fit is not None:
+            y_eval = binary.shape[0] - 1
+    
+            left_base = int(np.polyval(self.prev_left_fit, y_eval))
+            right_base = int(np.polyval(self.prev_right_fit, y_eval))
+        else:
+            hist = np.sum(binary[binary.shape[0] // 2 :, :], axis=0)
+            mid = int(hist.shape[0] / 2)
+            left_base = int(np.argmax(hist[:mid]))
+            right_base = int(np.argmax(hist[mid:]) + mid)
 
         left_fit, right_fit, debug = self.sliding_windows(
             binary,
@@ -201,17 +240,30 @@ class LaneDetector:
             return_debug=True,
         )
 
-        left_fit = self.smooth_fit(left_fit, self.prev_left_fit)
-        right_fit = self.smooth_fit(right_fit, self.prev_right_fit)
-
         valid = self._valid_lane_pair(left_fit, right_fit, binary.shape[0])
         if valid:
+            self.consecutive_invalid_frames = 0
+            
+            left_fit = self.smooth_fit(left_fit, self.prev_left_fit)
+            right_fit = self.smooth_fit(right_fit, self.prev_right_fit)
+
             self.prev_left_fit = left_fit
             self.prev_right_fit = right_fit
         else:
-            left_fit = self.prev_left_fit
-            right_fit = self.prev_right_fit
-            valid = left_fit is not None and right_fit is not None
+            self.consecutive_invalid_frames += 1
+            
+            if self.prev_left_fit is not None and self.prev_right_fit is not None:
+                if self.consecutive_invalid_frames > self.max_invalid_frames:
+                    self.prev_left_fit = None
+                    self.prev_right_fit = None
+                else:
+                    
+                    left_fit = self.prev_left_fit
+                    right_fit = self.prev_right_fit
+            else:
+                
+                self.prev_left_fit = left_fit
+                self.prev_right_fit = right_fit
 
         debug["valid"] = valid
         debug["left_base"] = left_base
@@ -222,14 +274,29 @@ class LaneDetector:
         if left_fit is None or right_fit is None:
             return False
 
-        y_eval = height - 1
-        left_x = float(np.polyval(left_fit, y_eval))
-        right_x = float(np.polyval(right_fit, y_eval))
-        lane_width = right_x - left_x
+        y_bottom = height - 1
+        left_x_bottom = float(np.polyval(left_fit, y_bottom))
+        right_x_bottom = float(np.polyval(right_fit, y_bottom))
+        width_bottom = right_x_bottom - left_x_bottom
+
+        y_top = 0
+        left_x_top = float(np.polyval(left_fit, y_top))
+        right_x_top = float(np.polyval(right_fit, y_top))
+        width_top = right_x_top - left_x_top
+
         width_scale = self.warp_width / lane_config.WARP_WIDTH
         min_width = self.lane_width_min * width_scale
         max_width = self.lane_width_max * width_scale
-        return min_width <= lane_width <= max_width
+
+        if not (min_width <= width_bottom <= max_width) or not (min_width <= width_top <= max_width):
+            return False
+
+        if self.prev_left_fit is not None:
+            prev_left_x_top = float(np.polyval(self.prev_left_fit, y_top))
+            if abs(left_x_top - prev_left_x_top) > 65:
+                return False
+
+        return True
 
     def draw_sliding_windows(self, binary, debug, left_fit=None, right_fit=None):
         if len(binary.shape) == 2:
@@ -326,3 +393,4 @@ class LaneDetector:
 
     def update(self, frame):
         return self.process_frame(frame)
+ 

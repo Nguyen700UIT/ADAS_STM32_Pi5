@@ -82,6 +82,7 @@ class LaneDetectorTests(unittest.TestCase):
 
         detector = self._load_detector_module()
         lane_detector = detector.LaneDetector()
+
         cap = cv.VideoCapture(str(LANE_DIR / "VIDEO_GOC_TESTCASE_1.mp4"))
         ok, frame = cap.read()
         cap.release()

@@ -8,7 +8,6 @@ from detector import LaneDetector
 
 DEFAULT_VIDEO = Path(__file__).with_name("VIDEO_GOC_TESTCASE_1.mp4")
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Live lane detector visualization.")
     parser.add_argument(
