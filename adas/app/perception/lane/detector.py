@@ -212,7 +212,7 @@ class LaneDetector:
             "right_inds": right_lane_inds,
         }
         return left_fit, right_fit, debug
-
+    
     def compute_center(self, left_fitx, right_fitx):
         center_fitx = (left_fitx + right_fitx)/2
         return center_fitx

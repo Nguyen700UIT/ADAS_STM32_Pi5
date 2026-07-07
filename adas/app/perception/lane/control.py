@@ -50,6 +50,7 @@ class LaneController:
         )
         self.uart_connected = self.uart.connect()
 
+        self.offset = 0
         self.smoothed_steering = 0.0            # EMA-smoothed steering angle
         self.consecutive_departure = 0           # Frames since departure flag set
         self.frame_counter = 0                   # Counter for transmission rate
@@ -63,4 +64,38 @@ class LaneController:
         self.uart.close()
         self.uart_connected = False
 
-    
+    def calc_offset(self, center_fitx, ploty):
+        """
+        Compute blended lateral offset using weighted lookahead points.
+
+        For each lookahead y-position in LOOKAHEAD_POINTS_Y:
+            1. Find the closest y-index in ploty
+            2. Get the lane center x at that index from center_fitx
+            3. Compute offset = center_x - img_center
+            4. Multiply by the lookahead weight
+            5. Sum all weighted offsets
+
+        A deadband is applied to the final blended offset.
+
+        Args:
+            center_fitx: Lane center x-positions for all y in ploty.
+            ploty: y-coordinates corresponding to center_fitx.
+
+        Returns:
+            Blended offset in pixels (float).
+            Positive = right of center, Negative = left of center.
+        """
+        blended_offset = 0.0
+
+        for lookahead_y, weight in zip(self.lookahead_points_y, self.lookahead_weights):
+            # Find the index in ploty closest to the target lookahead y
+            idx = np.argmin(np.abs(ploty - lookahead_y))
+            lane_center_x = center_fitx[idx]
+            offset = lane_center_x - self.img_center
+            blended_offset += weight * offset
+
+        # Apply deadband to prevent jitter
+        if abs(blended_offset) < self.offset_deadband:
+            return 0.0
+
+        return blended_offset
