@@ -118,15 +118,11 @@ class LaneDetector:
         return binary
 
     def sliding_windows(self, binary, left_base, right_base, return_debug=False):
-        """
-        NÂNG CẤP CÁCH B (BÁM QUÁN TÍNH TÍCH LŨY + LA BÀN FRAME TRƯỚC):
-        Ngăn chặn tuyệt đối tình trạng window co cụm thành hàng dọc khi đường cong bị khuất/đứt vạch.
-        """
+
         window_height = binary.shape[0] // self.n_windows
         curr_left = int(left_base)
         curr_right = int(right_base)
 
-        # Lưu lịch sử dịch chuyển (xu hướng dốc) của các tầng dưới để làm bộ lọc quán tính
         left_shifts = []
         right_shifts = []
 
@@ -140,13 +136,11 @@ class LaneDetector:
             win_y_high = binary.shape[0] - window * window_height
             win_y_mid = (win_y_low + win_y_high) // 2
 
-            # LẤY ĐỊNH HƯỚNG TỪ FRAME TRƯỚC NẾU CÓ (Chiêu bài chống sập hàng dọc tối thượng)
             if window > 0:
                 if self.prev_left_fit is not None:
-                    # Nếu có vết cũ, bắt tâm window đi theo hình dáng cong của vết cũ thay vì đứng thẳng
                     curr_left = int(np.polyval(self.prev_left_fit, win_y_mid))
                 elif len(left_shifts) > 0:
-                    # Nếu không có vết cũ, lấy trung bình quán tính dịch chuyển của các ô dưới
+    
                     curr_left += int(np.mean(left_shifts))
 
                 if self.prev_right_fit is not None:
@@ -182,14 +176,13 @@ class LaneDetector:
             left_lane_inds.append(good_left)
             right_lane_inds.append(good_right)
 
-            # CẬP NHẬT TÂM VÀ LƯU XU HƯỚNG ĐỘ DỐC CHO Ô TIẾP THEO
             if len(good_left) > self.min_pixels:
                 next_left = int(np.mean(nonzerox[good_left]))
                 if window > 0:
                     left_shifts.append(next_left - curr_left)
                 curr_left = next_left
             else:
-                # Nếu mất dấu vạch đứt, ép ô tiếp theo nghiêng tiếp dựa vào xu hướng cũ
+
                 if len(left_shifts) > 0:
                     curr_left += int(np.mean(left_shifts))
 
@@ -266,11 +259,9 @@ class LaneDetector:
             
             if self.prev_left_fit is not None and self.prev_right_fit is not None:
                 if self.consecutive_invalid_frames > self.max_invalid_frames:
-                    # Mất dấu hẳn quá lâu mới reset để quét lại từ đầu
                     self.prev_left_fit = None
                     self.prev_right_fit = None
                 else:
-                    # KHI ĐANG NHIỄU NGẮN HẠN: Lấy hẳn vết cũ mượt mà, triệt tiêu hoàn toàn nháy xanh (Blink)
                     left_fit = self.prev_left_fit
                     right_fit = self.prev_right_fit
             else:
@@ -300,11 +291,10 @@ class LaneDetector:
         min_width = self.lane_width_min * width_scale
         max_width = self.lane_width_max * width_scale
 
-        # Kiểm tra khoảng cách độ rộng làn đường
+      
         if not (min_width <= width_bottom <= max_width) or not (min_width <= width_top <= max_width):
             return False
 
-        # TĂNG ĐỘ LINH HOẠT KHI CONG: Cho phép đỉnh dịch chuyển tối đa 65px thay vì 35px để tránh bộ lọc loại bỏ nhầm đường cong chuẩn
         if self.prev_left_fit is not None:
             prev_left_x_top = float(np.polyval(self.prev_left_fit, y_top))
             if abs(left_x_top - prev_left_x_top) > 65:
