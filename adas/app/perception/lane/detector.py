@@ -213,6 +213,10 @@ class LaneDetector:
         }
         return left_fit, right_fit, debug
 
+    def compute_center(self, left_fitx, right_fitx):
+        center_fitx = (left_fitx + right_fitx)/2
+        return center_fitx
+
     def _fit_lane(self, x_values, y_values):
         min_points = self.polyfit_degree + 1
         if x_values.size < min_points or y_values.size < min_points:
