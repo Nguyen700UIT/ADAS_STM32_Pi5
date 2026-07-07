@@ -9,42 +9,33 @@ except ImportError:
 
 class LaneDetector:
     def __init__(self):
-        # --- Load all config parameters ---
-        # Image dimensions
         self.img_width = lane_config.IMAGE_WIDTH
         self.img_height = lane_config.IMAGE_HEIGHT
 
-
-        # Perspective transform matrices (precomputed)
-        src_pts = np.float32(lane_config.WARP_SRC)
-        dst_pts = np.float32(lane_config.WARP_DST)
-        self.warp_matrix = cv.getPerspectiveTransform(src_pts, dst_pts)
-        self.inv_warp_matrix = cv.getPerspectiveTransform(dst_pts, src_pts)
+        self.base_src_pts = np.float32(lane_config.WARP_SRC)
+        self.base_dst_pts = np.float32(lane_config.WARP_DST)
+        self.warp_matrix = None
+        self.inv_warp_matrix = None
+        self._warp_cache_key = None
         self.warp_width = lane_config.WARP_WIDTH
         self.warp_height = lane_config.WARP_HEIGHT
 
-        # Sliding window parameters (in warped bird's-eye space)
         self.n_windows = lane_config.N_WINDOWS
         self.margin = lane_config.MARGIN
         self.min_pixels = lane_config.MIN_PIXELS
-
-        # Lane polynomial fit
         self.polyfit_degree = lane_config.POLYFIT_DEGREE
 
-        # Lane width validation (in warped space)
         self.lane_width_min = lane_config.LANE_WIDTH_MIN
         self.lane_width_max = lane_config.LANE_WIDTH_MAX
 
-        # Smoothing (EMA) for polynomial coefficients
         self.smoothing_alpha = lane_config.SMOOTHING_ALPHA
-        self.prev_left_fit = None   # Polynomial coefficients for left lane
-        self.prev_right_fit = None  # Polynomial coefficients for right lane
+        self.prev_left_fit = None
+        self.prev_right_fit = None
 
-        # Preprocessing
+        self.consecutive_invalid_frames = lane_config.CONSECUTIVE_INVALID_FRAMES
+        self.max_invalid_frames = lane_config.MAX_INVALID_FRAMES
+        
         self.blur_kernel = lane_config.GAUSSIAN_BLUR_KERNEL
-
-
-        # White / yellow color thresholds
         self.white_threshold = lane_config.WHITE_THRESHOLD
         self.yellow_low_h = lane_config.YELLOW_LOW_H
         self.yellow_high_h = lane_config.YELLOW_HIGH_H
@@ -53,55 +44,116 @@ class LaneDetector:
         self.yellow_min_v = lane_config.YELLOW_MIN_V
         self.yellow_max_v = lane_config.YELLOW_MAX_V
 
-        # Debug flags
         self.show_lane_lines = lane_config.SHOW_LANE_LINES
         self.show_warp = lane_config.SHOW_WARP
 
     def preprocess(self, frame):
-        gaussianBlurred = cv.GaussianBlur(frame, (self.blur_kernel, self.blur_kernel), 0)
-        return gaussianBlurred
+        return cv.GaussianBlur(frame, (self.blur_kernel, self.blur_kernel), 0)
 
     def warp_perspective(self, preprocessed_frame):
-        transformedFrame = cv.warpPerspective(preprocessed_frame, self.warp_matrix, (self.warp_width, self.warp_height))
-        return transformedFrame
-    
+        h, w = preprocessed_frame.shape[:2]
+        warp_matrix, _ = self._get_warp_matrices(w, h)
+        return cv.warpPerspective(
+            preprocessed_frame,
+            warp_matrix,    
+            (w, h),
+        )
+
+    def _get_warp_matrices(self, width, height):
+        cache_key = (width, height)
+        if self._warp_cache_key == cache_key:
+            return self.warp_matrix, self.inv_warp_matrix
+
+        scale = self._point_scale(width, height)
+        src_pts = self.base_src_pts * scale
+        dst_pts = self.base_dst_pts * scale
+        self.warp_matrix = cv.getPerspectiveTransform(src_pts, dst_pts)
+        self.inv_warp_matrix = cv.getPerspectiveTransform(dst_pts, src_pts)
+        self.warp_width = width
+        self.warp_height = height
+        self._warp_cache_key = cache_key
+        return self.warp_matrix, self.inv_warp_matrix
+
+    def _point_scale(self, width, height):
+        return np.float32(
+            [
+                (width - 1) / (lane_config.IMAGE_WIDTH - 1),
+                (height - 1) / (lane_config.IMAGE_HEIGHT - 1),
+            ]
+        )
+
     def thresholding(self, warped_frame):
+        gray = cv.cvtColor(warped_frame, cv.COLOR_BGR2GRAY)
         hsv = cv.cvtColor(warped_frame, cv.COLOR_BGR2HSV)
-        
-        # White: low saturation (gray/white, S<=30), high value (bright, V>=threshold)
+
         lower_white = np.array([0, 0, self.white_threshold])
         upper_white = np.array([180, 30, 255])
 
-        # Yellow: narrow hue range for yellow lane lines
         lower_yellow = np.array([self.yellow_low_h, self.yellow_min_s, self.yellow_min_v])
         upper_yellow = np.array([self.yellow_high_h, self.yellow_max_s, self.yellow_max_v])
 
         white_mask = cv.inRange(hsv, lower_white, upper_white)
         yellow_mask = cv.inRange(hsv, lower_yellow, upper_yellow)
+        color_mask = cv.bitwise_or(white_mask, yellow_mask)
 
-        binary = cv.bitwise_or(white_mask, yellow_mask)
+        adaptive_mask = cv.adaptiveThreshold(
+            gray,
+            255,
+            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv.THRESH_BINARY,
+            51,
+            -8,
+        )
+        edge_mask = cv.Canny(gray, 50, 150)
+        edge_mask = cv.dilate(edge_mask, np.ones((3,3), dtype=np.uint8), iterations=1)
 
-        # Clean up noise with small kernel to preserve lane line detail
-        kernel = cv.getStructuringElement(cv.MORPH_RECT,(5, 15))
+        binary = cv.bitwise_or(color_mask, adaptive_mask)
+        binary = cv.bitwise_or(binary, edge_mask)
+
+        kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, 30))
+        binary = cv.dilate(binary, kernel, iterations=2)
+        binary = cv.erode(binary, kernel, iterations=2)
         binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
+
         return binary
 
-
- 
     def sliding_windows(self, binary, left_base, right_base, return_debug=False):
+        """
+        NÂNG CẤP CÁCH B (BÁM QUÁN TÍNH TÍCH LŨY + LA BÀN FRAME TRƯỚC):
+        Ngăn chặn tuyệt đối tình trạng window co cụm thành hàng dọc khi đường cong bị khuất/đứt vạch.
+        """
         window_height = binary.shape[0] // self.n_windows
         curr_left = int(left_base)
         curr_right = int(right_base)
+
+        # Lưu lịch sử dịch chuyển (xu hướng dốc) của các tầng dưới để làm bộ lọc quán tính
+        left_shifts = []
+        right_shifts = []
 
         nonzeroy, nonzerox = binary.nonzero()
         left_lane_inds = []
         right_lane_inds = []
         windows = []
-        debug = {}
 
         for window in range(self.n_windows):
             win_y_low = binary.shape[0] - (window + 1) * window_height
             win_y_high = binary.shape[0] - window * window_height
+            win_y_mid = (win_y_low + win_y_high) // 2
+
+            # LẤY ĐỊNH HƯỚNG TỪ FRAME TRƯỚC NẾU CÓ (Chiêu bài chống sập hàng dọc tối thượng)
+            if window > 0:
+                if self.prev_left_fit is not None:
+                    # Nếu có vết cũ, bắt tâm window đi theo hình dáng cong của vết cũ thay vì đứng thẳng
+                    curr_left = int(np.polyval(self.prev_left_fit, win_y_mid))
+                elif len(left_shifts) > 0:
+                    # Nếu không có vết cũ, lấy trung bình quán tính dịch chuyển của các ô dưới
+                    curr_left += int(np.mean(left_shifts))
+
+                if self.prev_right_fit is not None:
+                    curr_right = int(np.polyval(self.prev_right_fit, win_y_mid))
+                elif len(right_shifts) > 0:
+                    curr_right += int(np.mean(right_shifts))
+
             win_xleft_low = curr_left - self.margin
             win_xleft_high = curr_left + self.margin
             win_xright_low = curr_right - self.margin
@@ -119,7 +171,7 @@ class LaneDetector:
                 & (nonzeroy < win_y_high)
                 & (nonzerox >= win_xleft_low)
                 & (nonzerox < win_xleft_high)
-            ).nonzero()[0]                                           
+            ).nonzero()[0]
             good_right = (
                 (nonzeroy >= win_y_low)
                 & (nonzeroy < win_y_high)
@@ -130,30 +182,32 @@ class LaneDetector:
             left_lane_inds.append(good_left)
             right_lane_inds.append(good_right)
 
+            # CẬP NHẬT TÂM VÀ LƯU XU HƯỚNG ĐỘ DỐC CHO Ô TIẾP THEO
             if len(good_left) > self.min_pixels:
-                curr_left = int(np.mean(nonzerox[good_left]))
+                next_left = int(np.mean(nonzerox[good_left]))
+                if window > 0:
+                    left_shifts.append(next_left - curr_left)
+                curr_left = next_left
+            else:
+                # Nếu mất dấu vạch đứt, ép ô tiếp theo nghiêng tiếp dựa vào xu hướng cũ
+                if len(left_shifts) > 0:
+                    curr_left += int(np.mean(left_shifts))
+
             if len(good_right) > self.min_pixels:
-                curr_right = int(np.mean(nonzerox[good_right]))
+                next_right = int(np.mean(nonzerox[good_right]))
+                if window > 0:
+                    right_shifts.append(next_right - curr_right)
+                curr_right = next_right
+            else:
+                if len(right_shifts) > 0:
+                    curr_right += int(np.mean(right_shifts))
 
         left_lane_inds = np.concatenate(left_lane_inds) if left_lane_inds else np.array([], dtype=np.int64)
         right_lane_inds = np.concatenate(right_lane_inds) if right_lane_inds else np.array([], dtype=np.int64)
 
-        try:
-            left_fit = np.polyfit(
-                nonzeroy[left_lane_inds],
-                nonzerox[left_lane_inds],
-                self.polyfit_degree
-            )
+        left_fit = self._fit_lane(nonzerox[left_lane_inds], nonzeroy[left_lane_inds])
+        right_fit = self._fit_lane(nonzerox[right_lane_inds], nonzeroy[right_lane_inds])
 
-            right_fit = np.polyfit(
-                nonzeroy[right_lane_inds],
-                nonzerox[right_lane_inds],
-                self.polyfit_degree
-            )
-
-        except (np.linalg.LinAlgError, ValueError, TypeError):
-            return None, None, debug if return_debug else (None, None)
-        
         if not return_debug:
             return left_fit, right_fit
 
@@ -166,69 +220,30 @@ class LaneDetector:
         }
         return left_fit, right_fit, debug
 
-    def generate_lane_points(self, left_fit, right_fit):
-        ploty = np.linspace(0, self.warp_height - 1, self.warp_height)
-        left_fitx = np.polyval(left_fit, ploty)
-        right_fitx = np.polyval(right_fit, ploty)
-        return ploty, left_fitx, right_fitx
+    def _fit_lane(self, x_values, y_values):
+        min_points = self.polyfit_degree + 1
+        if x_values.size < min_points or y_values.size < min_points:
+            return None
+        return np.polyfit(y_values, x_values, self.polyfit_degree)
 
-    def validate_lane(self, left_fitx, right_fitx):
-        width = right_fitx - left_fitx
-        if np.any(width < self.lane_width_min):
-            return False
-        if np.any(width > self.lane_width_max):
-            return False
-        
-        return True
-
-    def smooth_lane(self, left_fit, right_fit):
-
-        if self.prev_left_fit is None:
-            self.prev_left_fit = left_fit
-            self.prev_right_fit = right_fit
-            return left_fit, right_fit
-        #EMA smoothing
-        left_fit = (
-            self.smoothing_alpha * left_fit +
-            (1-self.smoothing_alpha) * self.prev_left_fit
-        )
-
-        right_fit = (
-            self.smoothing_alpha * right_fit +
-            (1-self.smoothing_alpha) * self.prev_right_fit
-        )
-
-        self.prev_left_fit = left_fit
-        self.prev_right_fit = right_fit
-
-        return left_fit, right_fit
-
-    def compute_center(self, left_fitx, right_fitx):
-        center_fitx = (left_fitx + right_fitx)/2
-        return center_fitx
-
-    def draw_lane_mask(self, ploty, left_fitx, right_fitx):
-        mask = np.zeros((self.warp_height, self.warp_width, 3), dtype=np.uint8)
-        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
-        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
-        pts = np.hstack((pts_left, pts_right)).astype(np.int32)
-
-        cv.fillPoly(mask, [pts], (0,255,0))
-        return mask
-    
-    def inverse_warp(self, mask):
-        inversed_mask = cv.warpPerspective(mask, self.inv_warp_matrix, (self.img_width, self.img_height))
-        return inversed_mask
-
-    def overlay_lane(self, frame, inversed_mask):
-        return cv.addWeighted(frame, 1.00, inversed_mask, 0.6, 0)
-
+    def smooth_fit(self, current_fit, previous_fit):
+        if current_fit is None:
+            return previous_fit
+        if previous_fit is None:
+            return current_fit
+        alpha = self.smoothing_alpha
+        return (alpha * current_fit) + ((1.0 - alpha) * previous_fit)
 
     def find_lane(self, binary):
-        hist = np.sum(binary[binary.shape[0] // 2 :, :], axis=0)
-        mid = int(hist.shape[0] / 2)
-        left_base = int(np.argmax(hist[:mid]))
-        right_base = int(np.argmax(hist[mid:]) + mid)
+        if self.prev_left_fit is not None and self.prev_right_fit is not None:
+            y_eval = binary.shape[0] - 1
+            left_base = int(np.polyval(self.prev_left_fit, y_eval))
+            right_base = int(np.polyval(self.prev_right_fit, y_eval))
+        else:
+            hist = np.sum(binary[binary.shape[0] // 2 :, :], axis=0)
+            mid = int(hist.shape[0] / 2)
+            left_base = int(np.argmax(hist[:mid]))
+            right_base = int(np.argmax(hist[mid:]) + mid)
 
         left_fit, right_fit, debug = self.sliding_windows(
             binary,
@@ -237,111 +252,158 @@ class LaneDetector:
             return_debug=True,
         )
 
-        # If sliding windows failed to find lanes, fall back to previous fit
-        if left_fit is None or right_fit is None:
-            if self.prev_left_fit is not None:
-                left_fit = self.prev_left_fit
-                right_fit = self.prev_right_fit
+        valid = self._valid_lane_pair(left_fit, right_fit, binary.shape[0])
+        if valid:
+            self.consecutive_invalid_frames = 0
+            
+            left_fit = self.smooth_fit(left_fit, self.prev_left_fit)
+            right_fit = self.smooth_fit(right_fit, self.prev_right_fit)
+
+            self.prev_left_fit = left_fit
+            self.prev_right_fit = right_fit
+        else:
+            self.consecutive_invalid_frames += 1
+            
+            if self.prev_left_fit is not None and self.prev_right_fit is not None:
+                if self.consecutive_invalid_frames > self.max_invalid_frames:
+                    # Mất dấu hẳn quá lâu mới reset để quét lại từ đầu
+                    self.prev_left_fit = None
+                    self.prev_right_fit = None
+                else:
+                    # KHI ĐANG NHIỄU NGẮN HẠN: Lấy hẳn vết cũ mượt mà, triệt tiêu hoàn toàn nháy xanh (Blink)
+                    left_fit = self.prev_left_fit
+                    right_fit = self.prev_right_fit
             else:
-                return None
+                self.prev_left_fit = left_fit
+                self.prev_right_fit = right_fit
 
-        ploty, left_fitx, right_fitx = self.generate_lane_points(left_fit, right_fit)
-        valid = self.validate_lane(left_fitx, right_fitx)
+        debug["valid"] = valid
+        debug["left_base"] = left_base
+        debug["right_base"] = right_base
+        return left_fit, right_fit, debug
 
-        if not valid:
+    def _valid_lane_pair(self, left_fit, right_fit, height):
+        if left_fit is None or right_fit is None:
+            return False
 
-            if self.prev_left_fit is None:
-                return None
+        y_bottom = height - 1
+        left_x_bottom = float(np.polyval(left_fit, y_bottom))
+        right_x_bottom = float(np.polyval(right_fit, y_bottom))
+        width_bottom = right_x_bottom - left_x_bottom
 
-            left_fit = self.prev_left_fit
-            right_fit = self.prev_right_fit
-            ploty, left_fitx, right_fitx = self.generate_lane_points(left_fit, right_fit)
+        y_top = 0
+        left_x_top = float(np.polyval(left_fit, y_top))
+        right_x_top = float(np.polyval(right_fit, y_top))
+        width_top = right_x_top - left_x_top
 
-       
-        left_fit,right_fit = self.smooth_lane(left_fit, right_fit)
-        ploty, left_fitx, right_fitx = self.generate_lane_points(left_fit, right_fit)
+        width_scale = self.warp_width / lane_config.WARP_WIDTH
+        min_width = self.lane_width_min * width_scale
+        max_width = self.lane_width_max * width_scale
 
-        return {
-        "left_fit": left_fit,
-        "right_fit": right_fit,
-        "ploty": ploty,
-        "left_fitx": left_fitx,
-        "right_fitx": right_fitx,
-        "debug": debug,
-        }   
-    
-    def _make_debug_view(self, binary, warped, lane_mask_resized, output, frame_small):
-        """Create a 2x2 composite debug view of the lane detection pipeline."""
-        h, w = self.img_height, self.img_width
-        # Convert binary (single channel) to 3-channel BGR for display
-        binary_3ch = cv.cvtColor(binary, cv.COLOR_GRAY2BGR)
+        # Kiểm tra khoảng cách độ rộng làn đường
+        if not (min_width <= width_bottom <= max_width) or not (min_width <= width_top <= max_width):
+            return False
 
-        # Resize warped and binary to the same size for the debug grid
-        warped_small = cv.resize(warped, (w, h))
-        binary_small = cv.resize(binary_3ch, (w, h))
-        frame_small_bgr = cv.resize(frame_small, (w, h))
+        # TĂNG ĐỘ LINH HOẠT KHI CONG: Cho phép đỉnh dịch chuyển tối đa 65px thay vì 35px để tránh bộ lọc loại bỏ nhầm đường cong chuẩn
+        if self.prev_left_fit is not None:
+            prev_left_x_top = float(np.polyval(self.prev_left_fit, y_top))
+            if abs(left_x_top - prev_left_x_top) > 65:
+                return False
 
-        # Stack top row: original (resized) | binary
-        top = np.hstack((frame_small_bgr, binary_small))
-        # Stack bottom row: warped | output (resized)
-        output_small = cv.resize(output, (w, h))
-        lane_small = cv.resize(lane_mask_resized, (w, h)) if lane_mask_resized is not None else np.zeros((h, w, 3), dtype=np.uint8)
-        bottom = np.hstack((warped_small, output_small))
+        return True
 
-        debug_view = np.vstack((top, bottom))
-        # Add labels
-        cv.putText(debug_view, "Input", (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv.putText(debug_view, "Binary", (w + 10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv.putText(debug_view, "Warped", (10, h + 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv.putText(debug_view, "Output", (w + 10, h + 30), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        return debug_view
+    def draw_sliding_windows(self, binary, debug, left_fit=None, right_fit=None):
+        if len(binary.shape) == 2:
+            out_img = np.dstack((binary, binary, binary))
+        else:
+            out_img = binary.copy()
 
-    def process_frame(self, frame, return_debug=False):
-        original = frame
-        # Resize frame to match configured dimensions if needed
-        if frame.shape[1] != self.img_width or frame.shape[0] != self.img_height:
-            frame = cv.resize(frame, (self.img_width, self.img_height))
+        out_img = out_img.astype(np.uint8)
+        nonzerox = debug.get("nonzerox", np.array([], dtype=np.int64))
+        nonzeroy = debug.get("nonzeroy", np.array([], dtype=np.int64))
+        left_inds = debug.get("left_inds", np.array([], dtype=np.int64))
+        right_inds = debug.get("right_inds", np.array([], dtype=np.int64))
 
+        out_img[nonzeroy[left_inds], nonzerox[left_inds]] = (255, 0, 0)
+        out_img[nonzeroy[right_inds], nonzerox[right_inds]] = (0, 0, 255)
+
+        for window in debug.get("windows", []):
+            lx1, ly1, lx2, ly2 = window["left"]
+            rx1, ry1, rx2, ry2 = window["right"]
+            cv.rectangle(out_img, (lx1, ly1), (lx2, ly2), (0, 255, 0), 2)
+            cv.rectangle(out_img, (rx1, ry1), (rx2, ry2), (0, 255, 0), 2)
+
+        self._draw_fit_curve(out_img, left_fit, (255, 255, 0))
+        self._draw_fit_curve(out_img, right_fit, (0, 255, 255))
+        return out_img
+
+    def _draw_fit_curve(self, image, fit, color):
+        if fit is None:
+            return
+
+        ploty = np.linspace(0, image.shape[0] - 1, image.shape[0])
+        fitx = np.polyval(fit, ploty)
+        points = np.array([np.transpose(np.vstack([fitx, ploty]))], dtype=np.int32)
+        cv.polylines(image, points, isClosed=False, color=color, thickness=3)
+
+    def draw_lane_overlay(self, frame, left_fit, right_fit):
+        if left_fit is None or right_fit is None:
+            return frame
+
+        h, w = frame.shape[:2]
+        _, inv_warp_matrix = self._get_warp_matrices(w, h)
+        ploty = np.linspace(0, h - 1, h)
+        leftx = np.polyval(left_fit, ploty)
+        rightx = np.polyval(right_fit, ploty)
+
+        lane_warp = np.zeros((h, w, 3), dtype=np.uint8)
+        pts_left = np.array([np.transpose(np.vstack([leftx, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([rightx, ploty])))])
+        pts = np.hstack((pts_left, pts_right)).astype(np.int32)
+
+        cv.fillPoly(lane_warp, [pts], (0, 180, 0))
+        cv.polylines(lane_warp, pts_left.astype(np.int32), False, (255, 255, 0), 8)
+        cv.polylines(lane_warp, pts_right.astype(np.int32), False, (0, 255, 255), 8)
+
+        unwarped = cv.warpPerspective(
+            lane_warp,
+            inv_warp_matrix,
+            (w, h),
+        )
+        return cv.addWeighted(frame, 1.0, unwarped, 0.35, 0)
+
+    def draw_warp_source(self, frame):
+        h, w = frame.shape[:2]
+        scale = self._point_scale(w, h)
+        src_pts = (self.base_src_pts * scale).astype(np.int32)
+        out = frame.copy()
+        cv.polylines(out, [src_pts], isClosed=True, color=(0, 255, 255), thickness=2)
+        for index, point in enumerate(src_pts):
+            x, y = point
+            cv.circle(out, (x, y), 5, (0, 0, 255), -1)
+            cv.putText(out, str(index), (x + 6, y - 6), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        return out
+
+    def process_frame(self, frame):
         preprocessed = self.preprocess(frame)
         warped = self.warp_perspective(preprocessed)
         binary = self.thresholding(warped)
+        left_fit, right_fit, debug = self.find_lane(binary)
 
-        result = self.find_lane(binary)
-        output = None
-        lane_mask_resized = None
+        annotated = self.draw_lane_overlay(frame.copy(), left_fit, right_fit)
+        sliding_view = self.draw_sliding_windows(binary, debug, left_fit, right_fit)
 
-        if result is not None:
-            lane_mask = self.draw_lane_mask(
-                result["ploty"],
-                result["left_fitx"],
-                result["right_fitx"]
-            )
-            lane_mask = self.inverse_warp(lane_mask)
-            # Resize lane mask to match original frame dimensions if needed
-            if lane_mask.shape[1] != original.shape[1] or lane_mask.shape[0] != original.shape[0]:
-                lane_mask_resized = cv.resize(lane_mask, (original.shape[1], original.shape[0]))
-            else:
-                lane_mask_resized = lane_mask
-            output = self.overlay_lane(original, lane_mask_resized)
+        data = {
+            "left_fit": left_fit,
+            "right_fit": right_fit,
+            "valid": debug["valid"],
+            "warp_source": self.draw_warp_source(frame),
+            "warped": warped,
+            "binary": binary,
+            "sliding_windows": sliding_view,
+            "debug": debug,
+        }
+        return annotated, data
 
-        if output is None:
-            if original.shape[1] != self.img_width or original.shape[0] != self.img_height:
-                output = cv.resize(frame, (original.shape[1], original.shape[0]))
-            else:
-                output = frame
-
-        if return_debug:
-            # Add lane overlay info text on the output panel
-            if result is not None:
-                lane_width = np.mean(result["right_fitx"] - result["left_fitx"])
-                cv.putText(output, f"Lane width: {lane_width:.0f}px", (10, 60),
-                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            else:
-                cv.putText(output, "No lane detected", (10, 60),
-                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            debug_view = self._make_debug_view(binary, warped, lane_mask_resized, output, frame)
-            return output, debug_view
-
-        return output
-    
-    
+    def update(self, frame):
+        return self.process_frame(frame)
