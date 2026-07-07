@@ -37,11 +37,11 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00017f8e  00000000  00000000  00018e20  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0000f679  00000000  00000000  00030dae  2**0
+ 17 .debug_line   0000f678  00000000  00000000  00030dae  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008a039  00000000  00000000  00040427  2**0
+ 18 .debug_str    0008a039  00000000  00000000  00040426  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000ca460  2**0
+ 19 .comment      00000043  00000000  00000000  000ca45f  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00003464  00000000  00000000  000ca4a4  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -3363,17 +3363,16 @@ void SystemInit (void)
  8001786:	4770      	bx	lr
 
 08001788 <UART_Comm_Init>:
-
-// ---------------------------------------------------------
-// TRIỂN KHAI HÀM CHỨC NĂNG
-// ---------------------------------------------------------
+static UART_RX_Packet_t current_rx_packet = {0, 0, 0};
+static UART_TX_Packet_t current_tx_packet = {0, 0};
+static uint8_t rx_dma_buffer[sizeof(UART_RX_Packet_t)];
+static System_State_t current_system_state = SYS_STATE_NORMAL;
 
 void UART_Comm_Init(UART_HandleTypeDef *huart) {
  8001788:	b580      	push	{r7, lr}
  800178a:	b082      	sub	sp, #8
  800178c:	af00      	add	r7, sp, #0
  800178e:	6078      	str	r0, [r7, #4]
-    // Xóa bộ đệm
     memset(&current_rx_packet, 0, sizeof(UART_RX_Packet_t));
  8001790:	2204      	movs	r2, #4
  8001792:	2100      	movs	r1, #0
@@ -3384,9 +3383,6 @@ void UART_Comm_Init(UART_HandleTypeDef *huart) {
  800179c:	2100      	movs	r1, #0
  800179e:	4807      	ldr	r0, [pc, #28]	@ (80017bc <UART_Comm_Init+0x34>)
  80017a0:	f003 fd4a 	bl	8005238 <memset>
-
-    // Kích hoạt ngắt nhận UART qua DMA.
-    // Yêu cầu: Đã cấu hình DMA Circular mode trong CubeMX cho luồng RX.
     HAL_UART_Receive_DMA(huart, rx_dma_buffer, sizeof(rx_dma_buffer));
  80017a4:	2204      	movs	r2, #4
  80017a6:	4905      	ldr	r1, [pc, #20]	@ (80017bc <UART_Comm_Init+0x34>)
@@ -3403,7 +3399,6 @@ void UART_Comm_Init(UART_HandleTypeDef *huart) {
 
 080017c0 <HAL_UART_RxCpltCallback>:
 
-/* Callback ngắt DMA RX Cplt - Tự động được gọi bởi HAL khi nhận đủ số byte */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
  80017c0:	b480      	push	{r7}
  80017c2:	b083      	sub	sp, #12
@@ -3415,7 +3410,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
  80017cc:	4a05      	ldr	r2, [pc, #20]	@ (80017e4 <HAL_UART_RxCpltCallback+0x24>)
  80017ce:	4293      	cmp	r3, r2
  80017d0:	d103      	bne.n	80017da <HAL_UART_RxCpltCallback+0x1a>
-        // Parse dữ liệu từ buffer thô vào struct an toàn
         memcpy(&current_rx_packet, rx_dma_buffer, sizeof(UART_RX_Packet_t));
  80017d2:	4b05      	ldr	r3, [pc, #20]	@ (80017e8 <HAL_UART_RxCpltCallback+0x28>)
  80017d4:	681b      	ldr	r3, [r3, #0]
@@ -3440,7 +3434,6 @@ void FSM_Update(uint16_t current_distance_cm) {
  80017f4:	af00      	add	r7, sp, #0
  80017f6:	4603      	mov	r3, r0
  80017f8:	80fb      	strh	r3, [r7, #6]
-    // Điều kiện an toàn: Bỏ qua các giá trị nhiễu bằng 0 của cảm biến siêu âm
     if (current_distance_cm > 0 && current_distance_cm <= DANGER_THRESHOLD_CM) {
  80017fa:	88fb      	ldrh	r3, [r7, #6]
  80017fc:	2b00      	cmp	r3, #0
@@ -3448,14 +3441,12 @@ void FSM_Update(uint16_t current_distance_cm) {
  8001800:	88fb      	ldrh	r3, [r7, #6]
  8001802:	2b14      	cmp	r3, #20
  8001804:	d803      	bhi.n	800180e <FSM_Update+0x1e>
-        // Chuyển sang trạng thái khẩn cấp
         current_system_state = SYS_STATE_EMERGENCY_STOP;
  8001806:	4b06      	ldr	r3, [pc, #24]	@ (8001820 <FSM_Update+0x30>)
  8001808:	2201      	movs	r2, #1
  800180a:	701a      	strb	r2, [r3, #0]
  800180c:	e003      	b.n	8001816 <FSM_Update+0x26>
     } else {
-        // Khôi phục trạng thái hoạt động bình thường
         current_system_state = SYS_STATE_NORMAL;
  800180e:	4b04      	ldr	r3, [pc, #16]	@ (8001820 <FSM_Update+0x30>)
  8001810:	2200      	movs	r2, #0
@@ -3487,24 +3478,23 @@ void FSM_Get_Control_Signals(int16_t *out_speed, int8_t *out_steering) {
  8001838:	d009      	beq.n	800184e <FSM_Get_Control_Signals+0x2a>
  800183a:	e016      	b.n	800186a <FSM_Get_Control_Signals+0x46>
         case SYS_STATE_EMERGENCY_STOP:
-            *out_speed = 0; // Force dừng khẩn cấp
+            *out_speed = 0;
  800183c:	687b      	ldr	r3, [r7, #4]
  800183e:	2200      	movs	r2, #0
  8001840:	801a      	strh	r2, [r3, #0]
-            *out_steering = current_rx_packet.steering_error; // Giữ nguyên góc lái hoặc trả thẳng
+            *out_steering = current_rx_packet.steering_error;
  8001842:	4b13      	ldr	r3, [pc, #76]	@ (8001890 <FSM_Get_Control_Signals+0x6c>)
  8001844:	f993 2003 	ldrsb.w	r2, [r3, #3]
  8001848:	683b      	ldr	r3, [r7, #0]
  800184a:	701a      	strb	r2, [r3, #0]
             break;
  800184c:	e019      	b.n	8001882 <FSM_Get_Control_Signals+0x5e>
-
         case SYS_STATE_AVOID_REVERSE:
-            *out_speed = -30; // Force lùi với PWM/RPM an toàn
+            *out_speed = -30;
  800184e:	687b      	ldr	r3, [r7, #4]
  8001850:	f64f 72e2 	movw	r2, #65506	@ 0xffe2
  8001854:	801a      	strh	r2, [r3, #0]
-            *out_steering = -current_rx_packet.steering_error; // Lùi đánh lái ngược lại (tùy logic)
+            *out_steering = -current_rx_packet.steering_error;
  8001856:	4b0e      	ldr	r3, [pc, #56]	@ (8001890 <FSM_Get_Control_Signals+0x6c>)
  8001858:	f993 3003 	ldrsb.w	r3, [r3, #3]
  800185c:	b2db      	uxtb	r3, r3
@@ -3515,10 +3505,8 @@ void FSM_Get_Control_Signals(int16_t *out_speed, int8_t *out_steering) {
  8001866:	701a      	strb	r2, [r3, #0]
             break;
  8001868:	e00b      	b.n	8001882 <FSM_Get_Control_Signals+0x5e>
-
         case SYS_STATE_NORMAL:
         default:
-            // Bypass tín hiệu gốc từ RPi xuống khối PID/Servo
             *out_speed = current_rx_packet.target_speed;
  800186a:	4b09      	ldr	r3, [pc, #36]	@ (8001890 <FSM_Get_Control_Signals+0x6c>)
  800186c:	f9b3 3001 	ldrsh.w	r3, [r3, #1]
@@ -3553,7 +3541,6 @@ void UART_Comm_Send(UART_HandleTypeDef *huart, uint16_t distance, int16_t rpm) {
  800189e:	807b      	strh	r3, [r7, #2]
  80018a0:	4613      	mov	r3, r2
  80018a2:	803b      	strh	r3, [r7, #0]
-    // Cập nhật dữ liệu vào struct
     current_tx_packet.distance_cm = distance;
  80018a4:	4a07      	ldr	r2, [pc, #28]	@ (80018c4 <UART_Comm_Send+0x30>)
  80018a6:	887b      	ldrh	r3, [r7, #2]
@@ -3562,9 +3549,6 @@ void UART_Comm_Send(UART_HandleTypeDef *huart, uint16_t distance, int16_t rpm) {
  80018aa:	4a06      	ldr	r2, [pc, #24]	@ (80018c4 <UART_Comm_Send+0x30>)
  80018ac:	883b      	ldrh	r3, [r7, #0]
  80018ae:	8053      	strh	r3, [r2, #2]
-
-    // Gửi Non-blocking qua DMA hoặc IT. Ở đây dùng IT để tiết kiệm kênh DMA nếu CubeMX chưa setup DMA TX.
-    // Nếu có DMA TX, thay thế bằng HAL_UART_Transmit_DMA.
     HAL_UART_Transmit_IT(huart, (uint8_t*)&current_tx_packet, sizeof(UART_TX_Packet_t));
  80018b0:	2204      	movs	r2, #4
  80018b2:	4904      	ldr	r1, [pc, #16]	@ (80018c4 <UART_Comm_Send+0x30>)

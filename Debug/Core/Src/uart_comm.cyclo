@@ -1,5 +1,5 @@
-../Core/Src/uart_comm.c:22:6:UART_Comm_Init	1
-../Core/Src/uart_comm.c:33:6:HAL_UART_RxCpltCallback	2
-../Core/Src/uart_comm.c:40:6:FSM_Update	3
-../Core/Src/uart_comm.c:51:6:FSM_Get_Control_Signals	3
-../Core/Src/uart_comm.c:72:6:UART_Comm_Send	1
+../Core/Src/uart_comm.c:10:6:UART_Comm_Init	1
+../Core/Src/uart_comm.c:16:6:HAL_UART_RxCpltCallback	2
+../Core/Src/uart_comm.c:22:6:FSM_Update	3
+../Core/Src/uart_comm.c:30:6:FSM_Get_Control_Signals	3
+../Core/Src/uart_comm.c:48:6:UART_Comm_Send	1
