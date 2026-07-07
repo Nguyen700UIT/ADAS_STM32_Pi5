@@ -374,7 +374,7 @@ class LaneDetector:
             cv.putText(out, str(index), (x + 6, y - 6), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         return out
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, return_debug=False):
         preprocessed = self.preprocess(frame)
         warped = self.warp_perspective(preprocessed)
         binary = self.thresholding(warped)

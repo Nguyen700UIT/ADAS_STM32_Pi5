@@ -1,7 +1,6 @@
 """
 Test script to run lane detection on test_video.mp4.
 Press 'q' to quit the live preview window.
-Processes all frames even if lane detection fails on some frames.
 """
 
 import cv2 as cv
@@ -15,18 +14,16 @@ except ImportError:
     from .detector import LaneDetector
 
 
-VIDEO_PATH = os.path.join(os.path.dirname(__file__), "test_video.mp4")
+VIDEO_PATH = os.path.join(os.path.dirname(__file__), "VIDEO_GOC_TESTCASE_1.mp4")
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "output_test_video.mp4")
 
 
 def main():
-    # --- Open video ---
     cap = cv.VideoCapture(VIDEO_PATH)
     if not cap.isOpened():
         print(f"[ERROR] Could not open video: {VIDEO_PATH}")
         sys.exit(1)
 
-    # --- Video properties for output writer ---
     fps = cap.get(cv.CAP_PROP_FPS)
     width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
@@ -36,9 +33,7 @@ def main():
     fourcc = cv.VideoWriter_fourcc(*"mp4v")
     out = cv.VideoWriter(OUTPUT_PATH, fourcc, fps, (width, height))
 
-    # --- Lane detector ---
     detector = LaneDetector()
-
     frame_count = 0
     failed_count = 0
 
@@ -47,35 +42,26 @@ def main():
         if not ret:
             break
 
-        # Process frame
         try:
-            # return_debug=True returns (output, debug_view) tuple
-            output, debug_view = detector.process_frame(frame, return_debug=True)
+            annotated, _ = detector.process_frame(frame)
         except Exception as e:
-            # If lane detection fails, write the original frame
             print(f"  [WARN] Frame {frame_count}: {e}")
+            traceback.print_exc()
             failed_count += 1
-            output = frame
-            debug_view = frame
+            annotated = frame
 
-        # Write to output video
-        out.write(output)
-
-        # Show live preview (2x2 composite: Input | Binary | Warped | Output)
-        cv.imshow("Lane Detection Pipeline - test_video.mp4", debug_view)
+        out.write(annotated)
+        cv.imshow("Lane Detection - Output", annotated)
         frame_count += 1
 
-        # Progress every 100 frames
         if frame_count % 100 == 0:
             print(f"  Processed {frame_count}/{total_frames} frames "
                   f"(failures: {failed_count})")
 
-        # Press 'q' to quit early
         if cv.waitKey(1) & 0xFF == ord("q"):
             print("  Quit requested by user.")
             break
 
-    # --- Cleanup ---
     cap.release()
     out.release()
     cv.destroyAllWindows()
