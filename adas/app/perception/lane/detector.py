@@ -107,14 +107,18 @@ class LaneDetector:
         edge_mask = cv.Canny(gray, 50, 150)
         edge_mask = cv.dilate(edge_mask, np.ones((3,3), dtype=np.uint8), iterations=1)
 
-        kernel = np.ones((3, 3), dtype=np.uint8)
         binary = cv.bitwise_or(color_mask, adaptive_mask)
         binary = cv.bitwise_or(binary, edge_mask)
+
+        kernel = cv.getStructuringElement(cv.MORPH_RECT, (1, 30))
+        binary = cv.dilate(binary, kernel, iterations=2)
+        binary = cv.erode(binary, kernel, iterations=2)
         binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
 
         return binary
 
     def sliding_windows(self, binary, left_base, right_base, return_debug=False):
+
         window_height = binary.shape[0] // self.n_windows
         curr_left = int(left_base)
         curr_right = int(right_base)
@@ -136,6 +140,7 @@ class LaneDetector:
                 if self.prev_left_fit is not None:
                     curr_left = int(np.polyval(self.prev_left_fit, win_y_mid))
                 elif len(left_shifts) > 0:
+    
                     curr_left += int(np.mean(left_shifts))
 
                 if self.prev_right_fit is not None:
@@ -177,6 +182,7 @@ class LaneDetector:
                     left_shifts.append(next_left - curr_left)
                 curr_left = next_left
             else:
+
                 if len(left_shifts) > 0:
                     curr_left += int(np.mean(left_shifts))
 
@@ -224,7 +230,6 @@ class LaneDetector:
     def find_lane(self, binary):
         if self.prev_left_fit is not None and self.prev_right_fit is not None:
             y_eval = binary.shape[0] - 1
-    
             left_base = int(np.polyval(self.prev_left_fit, y_eval))
             right_base = int(np.polyval(self.prev_right_fit, y_eval))
         else:
@@ -257,11 +262,9 @@ class LaneDetector:
                     self.prev_left_fit = None
                     self.prev_right_fit = None
                 else:
-                    
                     left_fit = self.prev_left_fit
                     right_fit = self.prev_right_fit
             else:
-                
                 self.prev_left_fit = left_fit
                 self.prev_right_fit = right_fit
 
@@ -288,6 +291,7 @@ class LaneDetector:
         min_width = self.lane_width_min * width_scale
         max_width = self.lane_width_max * width_scale
 
+      
         if not (min_width <= width_bottom <= max_width) or not (min_width <= width_top <= max_width):
             return False
 
@@ -393,4 +397,3 @@ class LaneDetector:
 
     def update(self, frame):
         return self.process_frame(frame)
- 
