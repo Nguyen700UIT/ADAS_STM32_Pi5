@@ -55,21 +55,3 @@ $$\text{checksum} = (\text{dist\_L\_bytes} + \text{dist\_R\_bytes} + \text{rpm\_
 
 ---
 
-## 💡 4. Hướng dẫn lập trình triển khai cho phía Raspberry Pi (Tham khảo nhanh)
-
-Để hỗ trợ team phần mềm phía Raspberry Pi kết nối nhanh gọn, dưới đây là ví dụ triển khai đóng gói và giải mã bằng ngôn ngữ **Python** (Sử dụng thư viện `pyserial` và `struct`):
-
-### Khởi tạo kết nối
-```python
-import serial
-import struct
-
-# Cấu hình UART trên Raspberry Pi (Ví dụ dùng cổng /dev/ttyAMA0 hoặc /dev/ttyUSB0)
-ser = serial.Serial(
-    port='/dev/ttyAMA0',
-    baudrate=115200,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    bytesize=serial.EIGHTBITS,
-    timeout=0.1
-)
