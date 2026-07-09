@@ -1,4 +1,5 @@
 ../Core/Src/hc_sr04.c:7:6:HC_SR04_Init	1
-../Core/Src/hc_sr04.c:13:6:HC_SR04_Trigger	2
-../Core/Src/hc_sr04.c:19:6:HC_SR04_IC_Callback	9
-../Core/Src/hc_sr04.c:55:10:HC_SR04_Get_Min_Distance	3
+../Core/Src/hc_sr04.c:13:6:HC_SR04_Trigger_IT	2
+../Core/Src/hc_sr04.c:25:6:HC_SR04_IC_Callback	9
+../Core/Src/hc_sr04.c:61:10:HC_SR04_Get_Distance_Left	2
+../Core/Src/hc_sr04.c:65:10:HC_SR04_Get_Distance_Right	2

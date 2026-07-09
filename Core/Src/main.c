@@ -21,11 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "pid_dc.h"
 #include "uart_comm.h"
 #include "motor_dc.h"
 #include "servo.h"
-#include "pid.h"
 #include "hc_sr04.h"
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,6 +45,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
@@ -52,17 +54,21 @@ UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
-#define SAMPLE_TIME_MS 20
-#define ENCODER_PPR 1500.0f  // Chú ý: Thay đổi tham số này theo thực tế encoder motor của bạn
+TIM_HandleTypeDef htim1;
 
-PID_Controller_t speed_pid;
+#define SAMPLE_TIME_MS 20
+#define ENCODER_PPR_INT 1500
+
+PID_DC_Controller_t speed_pid;
 uint32_t prev_tick = 0;
 
 int16_t target_speed = 0;
 int8_t steering_error = 0;
+bool brake_command = false;
 int16_t final_target_speed = 0;
 int16_t actual_rpm = 0;
-uint16_t current_distance = 999;
+uint16_t dist_left = 999;
+uint16_t dist_right = 999;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,8 +79,9 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void MX_TIM1_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -116,22 +123,16 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  // 1. Khởi tạo Giao tiếp UART & FSM (Sử dụng DMA nhận)
+  MX_TIM1_Init();
+
   UART_Comm_Init(&huart1);
-
-  // 2. Khởi tạo Động cơ & Bộ điều khiển PID
-  Motor_Init(&htim2);
-  PID_Init(&speed_pid, 2.5f, 0.5f, 0.1f, -999.0f, 999.0f, (float)SAMPLE_TIME_MS / 1000.0f);
-
-  // 3. Khởi tạo Servo MG90S
+  Motor_Init(&htim2, &htim3);
   Servo_Init(&htim4);
-
-  // 4. Khởi tạo Cảm biến Siêu âm (Input Capture)
   HC_SR04_Init(&htim4);
 
-  // 5. Khởi tạo Encoder phần cứng
-  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+  PID_DC_Init(&speed_pid, 2500, 500, 100, -3599, 3599, 1000);
 
   prev_tick = HAL_GetTick();
   /* USER CODE END 2 */
@@ -140,41 +141,36 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    UART_Comm_Process(&huart1);
+
     uint32_t current_tick = HAL_GetTick();
 
-    // Vòng lặp định kỳ cố định (Non-blocking) theo SAMPLE_TIME_MS (20ms)
     if (current_tick - prev_tick >= SAMPLE_TIME_MS)
     {
       prev_tick = current_tick;
 
-      // 1. Kích hoạt TRIG siêu âm cho chu kỳ đọc tiếp theo
-      HC_SR04_Trigger();
+      HAL_TIM_Base_Start_IT(&htim1);
 
-      // 2. Lấy dữ liệu siêu âm & Chạy FSM (Failsafe)
-      current_distance = HC_SR04_Get_Min_Distance();
-      FSM_Update(current_distance);
-      FSM_Get_Control_Signals(&target_speed, &steering_error);
+      dist_left = HC_SR04_Get_Distance_Left();
+      dist_right = HC_SR04_Get_Distance_Right();
 
-      // 3. Đọc dữ liệu Encoder và Tính toán RPM thực tế
-      int16_t encoder_count = (int16_t)__HAL_TIM_GET_COUNTER(&htim3);
-      __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset thanh ghi đếm sau khi đọc
+      FSM_Update(dist_left, dist_right);
+      FSM_Get_Control_Signals(&target_speed, &steering_error, &brake_command);
 
-      // RPM = (Xung / Xung_1_Vong) * (60s / Thời_gian_mẫu_giây)
-      actual_rpm = (int16_t)(((float)encoder_count / ENCODER_PPR) * (60.0f / ((float)SAMPLE_TIME_MS / 1000.0f)));
+      int16_t encoder_count = Motor_Read_Encoder();
+      actual_rpm = (int16_t)(((int32_t)encoder_count * 60000) / ((int32_t)ENCODER_PPR_INT * SAMPLE_TIME_MS));
 
-      // 4. Xuất PWM điểu khiển góc Servo
-      Servo_Set_Angle(steering_error);
+      Servo_Set_Target_Angle(steering_error);
+      Servo_Update_Slew_Rate();
 
-      // 5. Phối hợp Động lực học: Tự động giảm tốc nếu góc đánh lái gắt
       final_target_speed = Dynamics_Compensate_Speed(target_speed, steering_error);
 
-      // 6. Tính toán PID và Cập nhật vận tốc Motor DC
-      speed_pid.setpoint = (float)final_target_speed;
-      float pid_output = PID_Compute(&speed_pid, (float)actual_rpm);
-      Motor_Drive((int16_t)pid_output);
+      speed_pid.setpoint = final_target_speed;
+      int32_t pid_output = PID_DC_Compute(&speed_pid, actual_rpm);
 
-      // 7. Gửi Packet dữ liệu telemetry (TX) lên RPi 5
-      UART_Comm_Send(&huart1, current_distance, actual_rpm);
+      Motor_Drive((int16_t)pid_output, brake_command);
+
+      UART_Comm_Send(&huart1, dist_left, dist_right, actual_rpm);
     }
     /* USER CODE END WHILE */
 
@@ -223,6 +219,52 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 71;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 9;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -242,9 +284,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 71;
+  htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 65535;
+  htim2.Init.Period = 3599;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -479,12 +521,19 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, TRIG2_Pin|TRIG1_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : TRIG2_Pin TRIG1_Pin */
-  GPIO_InitStruct.Pin = TRIG2_Pin|TRIG1_Pin;
+  /*Configure GPIO pin : TRIG2_Pin */
+  GPIO_InitStruct.Pin = TRIG2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(TRIG2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : TRIG1_Pin */
+  GPIO_InitStruct.Pin = TRIG1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(TRIG1_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -492,15 +541,19 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/**
-  * @brief  Callback Input Capture cho Timer 4 (Cảm biến HC-SR04)
-  * @note   Override hàm weak của HAL tại đây để truyền tín hiệu cho module hc_sr04.c
-  */
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM4)
   {
     HC_SR04_IC_Callback(htim);
+  }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim->Instance == TIM1)
+  {
+    HC_SR04_Trigger_IT(&htim1);
   }
 }
 /* USER CODE END 4 */
@@ -522,7 +575,7 @@ void Error_Handler(void)
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
-  * where the assert_param error has occurred.
+  *         where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number
   * @retval None

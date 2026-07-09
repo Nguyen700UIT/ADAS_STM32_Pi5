@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 void Servo_Init(TIM_HandleTypeDef *htim);
-void Servo_Set_Angle(int8_t steering_error);
+void Servo_Set_Target_Angle(int8_t steering_error);
+void Servo_Update_Slew_Rate(void);
 
 #endif

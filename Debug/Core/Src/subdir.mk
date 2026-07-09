@@ -8,7 +8,7 @@ C_SRCS += \
 ../Core/Src/hc_sr04.c \
 ../Core/Src/main.c \
 ../Core/Src/motor_dc.c \
-../Core/Src/pid.c \
+../Core/Src/pid_dc.c \
 ../Core/Src/servo.c \
 ../Core/Src/stm32f1xx_hal_msp.c \
 ../Core/Src/stm32f1xx_it.c \
@@ -21,7 +21,7 @@ OBJS += \
 ./Core/Src/hc_sr04.o \
 ./Core/Src/main.o \
 ./Core/Src/motor_dc.o \
-./Core/Src/pid.o \
+./Core/Src/pid_dc.o \
 ./Core/Src/servo.o \
 ./Core/Src/stm32f1xx_hal_msp.o \
 ./Core/Src/stm32f1xx_it.o \
@@ -34,7 +34,7 @@ C_DEPS += \
 ./Core/Src/hc_sr04.d \
 ./Core/Src/main.d \
 ./Core/Src/motor_dc.d \
-./Core/Src/pid.d \
+./Core/Src/pid_dc.d \
 ./Core/Src/servo.d \
 ./Core/Src/stm32f1xx_hal_msp.d \
 ./Core/Src/stm32f1xx_it.d \
@@ -51,7 +51,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/hc_sr04.cyclo ./Core/Src/hc_sr04.d ./Core/Src/hc_sr04.o ./Core/Src/hc_sr04.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/motor_dc.cyclo ./Core/Src/motor_dc.d ./Core/Src/motor_dc.o ./Core/Src/motor_dc.su ./Core/Src/pid.cyclo ./Core/Src/pid.d ./Core/Src/pid.o ./Core/Src/pid.su ./Core/Src/servo.cyclo ./Core/Src/servo.d ./Core/Src/servo.o ./Core/Src/servo.su ./Core/Src/stm32f1xx_hal_msp.cyclo ./Core/Src/stm32f1xx_hal_msp.d ./Core/Src/stm32f1xx_hal_msp.o ./Core/Src/stm32f1xx_hal_msp.su ./Core/Src/stm32f1xx_it.cyclo ./Core/Src/stm32f1xx_it.d ./Core/Src/stm32f1xx_it.o ./Core/Src/stm32f1xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32f1xx.cyclo ./Core/Src/system_stm32f1xx.d ./Core/Src/system_stm32f1xx.o ./Core/Src/system_stm32f1xx.su ./Core/Src/uart_comm.cyclo ./Core/Src/uart_comm.d ./Core/Src/uart_comm.o ./Core/Src/uart_comm.su
+	-$(RM) ./Core/Src/hc_sr04.cyclo ./Core/Src/hc_sr04.d ./Core/Src/hc_sr04.o ./Core/Src/hc_sr04.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/motor_dc.cyclo ./Core/Src/motor_dc.d ./Core/Src/motor_dc.o ./Core/Src/motor_dc.su ./Core/Src/pid_dc.cyclo ./Core/Src/pid_dc.d ./Core/Src/pid_dc.o ./Core/Src/pid_dc.su ./Core/Src/servo.cyclo ./Core/Src/servo.d ./Core/Src/servo.o ./Core/Src/servo.su ./Core/Src/stm32f1xx_hal_msp.cyclo ./Core/Src/stm32f1xx_hal_msp.d ./Core/Src/stm32f1xx_hal_msp.o ./Core/Src/stm32f1xx_hal_msp.su ./Core/Src/stm32f1xx_it.cyclo ./Core/Src/stm32f1xx_it.d ./Core/Src/stm32f1xx_it.o ./Core/Src/stm32f1xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32f1xx.cyclo ./Core/Src/system_stm32f1xx.d ./Core/Src/system_stm32f1xx.o ./Core/Src/system_stm32f1xx.su ./Core/Src/uart_comm.cyclo ./Core/Src/uart_comm.d ./Core/Src/uart_comm.o ./Core/Src/uart_comm.su
 
 .PHONY: clean-Core-2f-Src
 

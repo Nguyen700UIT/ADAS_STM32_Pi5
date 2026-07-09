@@ -1,0 +1,4 @@
+../Core/Src/pid_dc.c:4:6:PID_DC_Init	1
+../Core/Src/pid_dc.c:16:9:PID_DC_Compute	5
+../Core/Src/pid_dc.c:40:6:PID_DC_Reset	1
+../Core/Src/pid_dc.c:45:9:Dynamics_Compensate_Speed	2
