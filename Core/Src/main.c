@@ -54,8 +54,6 @@ UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
-TIM_HandleTypeDef htim1;
-
 #define SAMPLE_TIME_MS 20
 #define ENCODER_PPR_INT 1500
 
@@ -81,7 +79,7 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-static void MX_TIM1_Init(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -95,26 +93,13 @@ static void MX_TIM1_Init(void);
   */
 int main(void)
 {
-
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
   /* Configure the system clock */
   SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -124,9 +109,8 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM4_Init();
   MX_TIM1_Init();
-  /* USER CODE BEGIN 2 */
-  MX_TIM1_Init();
 
+  /* USER CODE BEGIN 2 */
   UART_Comm_Init(&huart1);
   Motor_Init(&htim2, &htim3);
   Servo_Init(&htim4);
@@ -139,44 +123,58 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    UART_Comm_Process(&huart1);
+      while (1)
+      {
+          // Parse liên tục dữ liệu từ bộ đệm DMA tròn (100% Non-blocking)
+          UART_Comm_Process(&huart1);
 
-    uint32_t current_tick = HAL_GetTick();
+          uint32_t current_tick = HAL_GetTick();
 
-    if (current_tick - prev_tick >= SAMPLE_TIME_MS)
-    {
-      prev_tick = current_tick;
+          if (current_tick - prev_tick >= SAMPLE_TIME_MS)
+          {
+              // VÁ LỖI TRÔI THỜI GIAN: Giữ chu kỳ lấy mẫu luôn cố định chính xác 20ms
+              prev_tick += SAMPLE_TIME_MS;
 
-      HAL_TIM_Base_Start_IT(&htim1);
+              // 1. Giải phóng cờ kẹt Input Capture nếu mất xung Echo ở chu kỳ cũ
+              HC_SR04_Watchdog_Check();
 
-      dist_left = HC_SR04_Get_Distance_Left();
-      dist_right = HC_SR04_Get_Distance_Right();
+              // 2. Thu thập kết quả đo khoảng cách của chu kỳ trước
+              dist_left = HC_SR04_Get_Distance_Left();
+              dist_right = HC_SR04_Get_Distance_Right();
 
-      FSM_Update(dist_left, dist_right);
-      FSM_Get_Control_Signals(&target_speed, &steering_error, &brake_command);
+              // 3. Kích phát xung Trigger mới (Đã sửa đổi tích hợp Reset Counter TIM1)
+              HC_SR04_Trigger_Start(&htim1);
 
-      int16_t encoder_count = Motor_Read_Encoder();
-      actual_rpm = (int16_t)(((int32_t)encoder_count * 60000) / ((int32_t)ENCODER_PPR_INT * SAMPLE_TIME_MS));
+              // 4. Cập nhật máy trạng thái FSM an toàn hệ thống
+              FSM_Update(dist_left, dist_right);
+              FSM_Get_Control_Signals(&target_speed, &steering_error, &brake_command);
 
-      Servo_Set_Target_Angle(steering_error);
-      Servo_Update_Slew_Rate();
+              // 5. Đọc bộ đếm Encoder (Thuật toán Delta mới chống rớt xung phần cứng)
+              int16_t encoder_count = Motor_Read_Encoder();
+              actual_rpm = (int16_t)(((int32_t)encoder_count * 60000) / ((int32_t)ENCODER_PPR_INT * SAMPLE_TIME_MS));
 
-      final_target_speed = Dynamics_Compensate_Speed(target_speed, steering_error);
+              // 6. Điều hướng góc Servo bằng bộ lọc Slew-rate
+              Servo_Set_Target_Angle(steering_error);
+              Servo_Update_Slew_Rate();
 
-      speed_pid.setpoint = final_target_speed;
-      int32_t pid_output = PID_DC_Compute(&speed_pid, actual_rpm);
+              // 7. Bù trừ động lực học cua gắt (Tự động giảm tốc chống lật xe)
+              final_target_speed = Dynamics_Compensate_Speed(target_speed, steering_error);
 
-      Motor_Drive((int16_t)pid_output, brake_command);
+              // 8. Tính toán PID vận tốc động cơ DC
+              speed_pid.setpoint = final_target_speed;
+              int32_t pid_output = PID_DC_Compute(&speed_pid, actual_rpm);
 
-      UART_Comm_Send(&huart1, dist_left, dist_right, actual_rpm);
-    }
-    /* USER CODE END WHILE */
+              // 9. Thực thi PWM ra Driver DRV8871 (Tích hợp Active Brake)
+              Motor_Drive((int16_t)pid_output, brake_command);
 
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+              // 10. Gửi Telemetry an toàn về Raspberry Pi 5
+              UART_Comm_Send(&huart1, dist_left, dist_right, actual_rpm);
+          }
+          /* USER CODE END WHILE */
+
+          /* USER CODE BEGIN 3 */
+      }
+      /* USER CODE END 3 */
 }
 
 /**
@@ -188,9 +186,6 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
@@ -203,8 +198,6 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
@@ -225,17 +218,9 @@ void SystemClock_Config(void)
   */
 static void MX_TIM1_Init(void)
 {
-
-  /* USER CODE BEGIN TIM1_Init 0 */
-
-  /* USER CODE END TIM1_Init 0 */
-
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  /* USER CODE BEGIN TIM1_Init 1 */
-
-  /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 71;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -258,10 +243,6 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM1_Init 2 */
-
-  /* USER CODE END TIM1_Init 2 */
-
 }
 
 /**
@@ -271,18 +252,10 @@ static void MX_TIM1_Init(void)
   */
 static void MX_TIM2_Init(void)
 {
-
-  /* USER CODE BEGIN TIM2_Init 0 */
-
-  /* USER CODE END TIM2_Init 0 */
-
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -320,11 +293,7 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
   HAL_TIM_MspPostInit(&htim2);
-
 }
 
 /**
@@ -334,17 +303,9 @@ static void MX_TIM2_Init(void)
   */
 static void MX_TIM3_Init(void)
 {
-
-  /* USER CODE BEGIN TIM3_Init 0 */
-
-  /* USER CODE END TIM3_Init 0 */
-
   TIM_Encoder_InitTypeDef sConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  /* USER CODE BEGIN TIM3_Init 1 */
-
-  /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -370,10 +331,6 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
-
 }
 
 /**
@@ -383,24 +340,17 @@ static void MX_TIM3_Init(void)
   */
 static void MX_TIM4_Init(void)
 {
-
-  /* USER CODE BEGIN TIM4_Init 0 */
-
-  /* USER CODE END TIM4_Init 0 */
-
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
   TIM_IC_InitTypeDef sConfigIC = {0};
 
-  /* USER CODE BEGIN TIM4_Init 1 */
-
-  /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 71;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 19999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  // Khuyến nghị thiết lập: Thay đổi ENABLE trong CubeMX cho AutoReloadPreload để bảo toàn dạng sóng PWM Servo
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
   {
@@ -445,11 +395,7 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
   HAL_TIM_MspPostInit(&htim4);
-
 }
 
 /**
@@ -459,14 +405,6 @@ static void MX_TIM4_Init(void)
   */
 static void MX_USART1_UART_Init(void)
 {
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
@@ -479,10 +417,6 @@ static void MX_USART1_UART_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
 }
 
 /**
@@ -490,7 +424,6 @@ static void MX_USART1_UART_Init(void)
   */
 static void MX_DMA_Init(void)
 {
-
   /* DMA controller clock enable */
   __HAL_RCC_DMA1_CLK_ENABLE();
 
@@ -498,7 +431,6 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel5_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
-
 }
 
 /**
@@ -509,9 +441,6 @@ static void MX_DMA_Init(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  /* USER CODE BEGIN MX_GPIO_Init_1 */
-
-  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOD_CLK_ENABLE();
@@ -534,10 +463,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(TRIG1_GPIO_Port, &GPIO_InitStruct);
-
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
-
-  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -564,27 +489,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
   }
-  /* USER CODE END Error_Handler_Debug */
 }
+
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
+  * where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

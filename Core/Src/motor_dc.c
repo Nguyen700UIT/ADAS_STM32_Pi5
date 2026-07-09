@@ -3,10 +3,12 @@
 static TIM_HandleTypeDef *motor_pwm_htim;
 static TIM_HandleTypeDef *motor_enc_htim;
 static uint32_t motor_arr = 0;
+static int16_t prev_encoder_count = 0; // Thêm biến lưu trạng thái cũ
 
 void Motor_Init(TIM_HandleTypeDef *pwm_htim, TIM_HandleTypeDef *enc_htim) {
     motor_pwm_htim = pwm_htim;
     motor_enc_htim = enc_htim;
+    prev_encoder_count = 0;
 
     if (motor_pwm_htim != NULL) {
         motor_arr = __HAL_TIM_GET_AUTORELOAD(motor_pwm_htim);
@@ -46,8 +48,13 @@ void Motor_Drive(int16_t speed, bool brake_flag) {
 int16_t Motor_Read_Encoder(void) {
     if (!motor_enc_htim) return 0;
 
-    int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(motor_enc_htim);
-    __HAL_TIM_SET_COUNTER(motor_enc_htim, 0);
+    // Đọc giá trị hiện tại (không reset Timer)
+    int16_t current_count = (int16_t)__HAL_TIM_GET_COUNTER(motor_enc_htim);
 
-    return count;
+    // Tự động xử lý tràn số (Overflow/Underflow) nhờ đặc tính của int16_t
+    int16_t delta = current_count - prev_encoder_count;
+
+    prev_encoder_count = current_count;
+
+    return delta;
 }

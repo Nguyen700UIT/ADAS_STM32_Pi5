@@ -14,7 +14,7 @@ void Servo_Init(TIM_HandleTypeDef *htim) {
         HAL_TIM_PWM_Start(servo_htim, TIM_CHANNEL_1);
         current_angle = 0;
         target_angle = 0;
-        Servo_Update_Slew_Rate(); // Init default position
+        Servo_Update_Slew_Rate(); // Cấu hình vị trí mặc định ban đầu
     }
 }
 
