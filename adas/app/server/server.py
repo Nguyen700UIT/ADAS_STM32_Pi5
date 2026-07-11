@@ -188,7 +188,7 @@ DASHBOARD_HTML = """
         <aside class="telemetry" aria-label="Thông tin xe">
             <div class="metric">
                 <p class="metric-label">Tốc độ xe</p>
-                <p class="metric-value"><span id="speed">--</span> <small>m/s</small></p>
+                <p class="metric-value"><span id="speed">--</span> <small>cm/s</small></p>
             </div>
 
             <div class="metric">
