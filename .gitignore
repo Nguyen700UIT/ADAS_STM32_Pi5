@@ -3,4 +3,3 @@ __pycache__/
 *.pyc
 *.jpg
 *.log
-git push -u origin main
