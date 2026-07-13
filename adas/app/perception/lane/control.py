@@ -55,10 +55,8 @@ class LaneController:
         self.uart_connected = self.uart.connect()
 
         self.smoothed_steering = 0.0            # EMA-smoothed steering angle
-        self.consecutive_departure = 0           # Frames since departure flag set
         self.frame_counter = 0                   # Counter for transmission rate
         self.last_send_time = time.time()        # For rate limiting
-        self.last_stm32_response = None          # Most recent STM32 telemetry
 
     def is_connected(self) -> bool:
         return self.uart_connected and self.uart.serial_port is not None and self.uart.serial_port.is_open
@@ -137,41 +135,6 @@ class LaneController:
             return self.normal_speed
         else:
             return self.low_speed
-
-    # ======================================================================
-    # FLAGS
-    # ======================================================================
-
-    def build_flags(self, offset, lane_valid):
-        """
-        Build the flags byte for the STM32 packet.
-
-        Bit layout:
-            bit0: LANE_VALID (1 = lane detected)
-            bit1: DEPARTURE  (1 = lane departure warning)
-
-        Args:
-            offset: Current lateral offset in pixels.
-            lane_valid: Whether lanes were detected.
-
-        Returns:
-            Flags byte (int).
-        """
-        flags = 0
-        if lane_valid:
-            flags |= 1
-
-        if lane_valid and abs(offset) > self.offset_deadband:
-            if abs(offset) > cfg.DEPARTURE_THRESHOLD_PX:
-                self.consecutive_departure += 1
-                if self.consecutive_departure >= cfg.DEPARTURE_CONSECUTIVE_FRAMES:
-                    flags |= 2
-            else:
-                self.consecutive_departure = 0
-        else:
-            self.consecutive_departure = 0
-
-        return flags
 
     # ======================================================================
     # SMOOTHING
@@ -272,7 +235,5 @@ class LaneController:
     def reset(self):
         """Reset all internal state (smoothing, counters, etc.)."""
         self.smoothed_steering = 0.0
-        self.consecutive_departure = 0
-        self.last_stm32_response = None
 
 
