@@ -205,19 +205,19 @@ class LaneController:
             [0]     = 0xAA          (fixed header)
             [1]     = 0x55          (fixed header)
             [2]     = cmd_id        (1 = lane control)
-            [3-4]   = target_speed  (int16, little-endian, 0..100)
+            [3-4]   = target_speed  (int16, little-endian, -3599..3599)
             [5]     = steering_error (int8, -100..100)
             [6]     = brake_command  (1 = emergency brake, 0 = normal)
             [7]     = checksum      (XOR of bytes 0-6)
 
         Args:
             offset: Lateral offset in pixels (steering_error, clamped -100..100).
-            speed:  Target speed command (0..100).
+            speed:  Target speed command (-3599..3599).
             brake:  Emergency brake flag.
         """
         header = bytes([0xAA, 0x55])
         cmd = bytes([1])  # cmd_id = 1 for lane control
-        speed_bytes = struct.pack('<h', int(np.clip(speed, 0, 100)))
+        speed_bytes = struct.pack('<h', int(np.clip(speed, -3599, 3599)))
         steer_byte = bytes([int(np.clip(offset, -100.0, 100.0)) & 0xFF])
         brake_byte = bytes([1 if brake else 0])
 
