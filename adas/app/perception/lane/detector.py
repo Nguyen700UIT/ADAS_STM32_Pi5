@@ -1,10 +1,11 @@
 import cv2 as cv
 import numpy as np
 
-try:
-    from . import lane_config
-except ImportError:
-    import lane_config
+import sys
+from pathlib import Path
+app_dir = Path(__file__).resolve().parents[2]
+sys.path.append(str(app_dir))
+from config import lane_config
 
 
 class LaneDetector:

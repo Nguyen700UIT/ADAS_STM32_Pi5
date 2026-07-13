@@ -4,13 +4,12 @@ import time
 import struct
 import numpy as np
 
-try:
-    from ...config import lane_control_config as cfg
-except ImportError:
-    try:
-        from config import lane_control_config as cfg
-    except ImportError:
-        import lane_control_config as cfg
+import sys
+from pathlib import Path
+app_dir = Path(__file__).resolve().parents[2]
+sys.path.append(str(app_dir))
+from config import lane_control_config as cfg
+
 
 try:
     from communication.protocol import UartProtocol
