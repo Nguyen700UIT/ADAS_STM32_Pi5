@@ -1,12 +1,16 @@
 
 
 import time
+import struct
 import numpy as np
 
 try:
-    from . import lane_control_config as cfg
+    from ...config import lane_control_config as cfg
 except ImportError:
-    import lane_control_config as cfg
+    try:
+        from config import lane_control_config as cfg
+    except ImportError:
+        import lane_control_config as cfg
 
 try:
     from communication.protocol import UartProtocol
@@ -190,37 +194,39 @@ class LaneController:
         return self.smoothed_steering
 
     # ======================================================================
-    # UART SEND / RECEIVE
+    # UART SEND (8-byte packet)
     # ======================================================================
 
-    def send_to_stm32(self, offset, curvature, speed, flags):
+    def send_to_stm32(self, offset, speed, brake=False):
         """
-        Pack lane data into a binary frame and send to STM32.
+        Build and send the 8-byte packet to STM32.
 
-        Uses UartProtocol.pack_data(flags, offset, curvature).
+        Byte layout:
+            [0]     = 0xAA          (fixed header)
+            [1]     = 0x55          (fixed header)
+            [2]     = cmd_id        (1 = lane control)
+            [3-4]   = target_speed  (int16, little-endian, 0..100)
+            [5]     = steering_error (int8, -100..100)
+            [6]     = brake_command  (1 = emergency brake, 0 = normal)
+            [7]     = checksum      (XOR of bytes 0-6)
 
         Args:
-            offset: Lateral offset in pixels.
-            curvature: Radius of curvature in meters.
-            speed: Speed command (0-100).
-            flags: Flags byte.
+            offset: Lateral offset in pixels (steering_error, clamped -100..100).
+            speed:  Target speed command (0..100).
+            brake:  Emergency brake flag.
         """
-        packet = UartProtocol.pack_data(flags, float(offset), float(curvature))
-        if packet:
-            self.uart.send_raw_bytes(packet)
-            self.last_send_time = time.time()
+        header = bytes([0xAA, 0x55])
+        cmd = bytes([1])  # cmd_id = 1 for lane control
+        speed_bytes = struct.pack('<h', int(np.clip(speed, 0, 100)))
+        steer_byte = bytes([int(np.clip(offset, -100.0, 100.0)) & 0xFF])
+        brake_byte = bytes([1 if brake else 0])
 
-    def read_stm32_response(self):
-        """
-        Read and parse response from STM32.
+        payload = header + cmd + speed_bytes + steer_byte + brake_byte
+        checksum = UartProtocol._calculate_checksum(payload)
+        packet = payload + bytes([checksum])
 
-        Returns:
-            Dict with keys 'status', 'speed', 'angle' or None if no data.
-        """
-        raw = self.uart.read_raw_bytes(12)
-        if raw and len(raw) == 12:
-            self.last_stm32_response = UartProtocol.unpack_data(raw)
-        return self.last_stm32_response
+        self.uart.send_raw_bytes(packet)
+        self.last_send_time = time.time()
 
     # ======================================================================
     # MAIN UPDATE
@@ -232,10 +238,8 @@ class LaneController:
 
         Flow:
             offset = calc_offset()
-            curvature = compute_curvature()
-            speed = select_speed(curvature)
-            flags = build_flags(offset, lane_valid)
-            send_to_stm32(offset, curvature, speed, flags)
+            speed = select_speed(compute_curvature())
+            send_to_stm32(offset, speed, brake=not lane_valid)
 
         Args:
             left_fit: Left lane polynomial coeffs or None.
@@ -245,7 +249,7 @@ class LaneController:
             lane_valid: Whether lanes were detected.
 
         Returns:
-            Dict with keys: offset, curvature, speed, flags, sent, response.
+            Dict with keys: offset, speed, sent.
         """
         self.frame_counter += 1
 
@@ -253,22 +257,15 @@ class LaneController:
         curvature = self.compute_curvature(left_fit, right_fit, ploty)
         speed = self.select_speed(curvature)
 
-        # Reduce speed if lane not detected or departing
         if not lane_valid:
             speed = int(speed * 0.3)
 
-        flags = self.build_flags(offset, lane_valid)
-
-        self.send_to_stm32(offset, curvature, speed, flags)
-        response = self.read_stm32_response()
+        self.send_to_stm32(offset, speed, brake=not lane_valid)
 
         return {
             "offset": offset,
-            "curvature": curvature,
             "speed": speed,
-            "flags": flags,
             "sent": True,
-            "response": response,
         }
 
 
