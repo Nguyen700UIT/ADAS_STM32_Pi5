@@ -164,12 +164,14 @@ class LaneController:
         """
         Build and send the 8-byte packet to STM32.
 
+        The offset is smoothed via EMA before packing to reduce jitter.
+
         Byte layout:
             [0]     = 0xAA          (fixed header)
             [1]     = 0x55          (fixed header)
             [2]     = cmd_id        (1 = lane control)
             [3-4]   = target_speed  (int16, little-endian, -3599..3599)
-            [5]     = steering_error (int8, -100..100)
+            [5]     = steering_error (int8, -100..100)  smoothed via EMA
             [6]     = brake_command  (1 = emergency brake, 0 = normal)
             [7]     = checksum      (XOR of bytes 0-6)
 
@@ -178,10 +180,13 @@ class LaneController:
             speed:  Target speed command (-3599..3599).
             brake:  Emergency brake flag.
         """
+        # Apply EMA smoothing to the steering error
+        smoothed_offset = self.smooth_steering(offset)
+
         header = bytes([0xAA, 0x55])
         cmd = bytes([1])  # cmd_id = 1 for lane control
         speed_bytes = struct.pack('<h', int(np.clip(speed, -3599, 3599)))
-        steer_byte = bytes([int(np.clip(offset, -100.0, 100.0)) & 0xFF])
+        steer_byte = bytes([int(np.clip(smoothed_offset, -100.0, 100.0)) & 0xFF])
         brake_byte = bytes([1 if brake else 0])
 
         payload = header + cmd + speed_bytes + steer_byte + brake_byte
