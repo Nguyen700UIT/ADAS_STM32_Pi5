@@ -1,5 +1,3 @@
-
-
 import time
 import numpy as np
 
@@ -18,7 +16,6 @@ except ImportError:
 
 class LaneController:
     def __init__(self, port=None, baudrate=None, timeout=None):
-
         self.img_center = cfg.IMG_CENTER
         self.lookahead_points_y = cfg.LOOKAHEAD_POINTS_Y
         self.lookahead_weights = cfg.LOOKAHEAD_POINTS_WEIGHTS
@@ -42,19 +39,19 @@ class LaneController:
 
         self.steering_ema_alpha = cfg.STEERING_EMA_ALPHA
 
-
+        # Khởi tạo UART với cấu hình tối ưu luồng
         self.uart = UartConfiguration(
             port=port or "/dev/ttyAMA0",
             baudrate=baudrate or 115200,
-            timeout=timeout or 0.5,
+            timeout=timeout or 0.005,
         )
         self.uart_connected = self.uart.connect()
 
-        self.smoothed_steering = 0.0            # EMA-smoothed steering angle
-        self.consecutive_departure = 0           # Frames since departure flag set
-        self.frame_counter = 0                   # Counter for transmission rate
-        self.last_send_time = time.time()        # For rate limiting
-        self.last_stm32_response = None          # Most recent STM32 telemetry
+        self.smoothed_steering = 0.0            
+        self.consecutive_departure = 0           
+        self.frame_counter = 0                   
+        self.last_send_time = time.time()        
+        self.last_stm32_response = None          
 
     def is_connected(self) -> bool:
         return self.uart_connected and self.uart.serial_port is not None and self.uart.serial_port.is_open
@@ -65,39 +62,17 @@ class LaneController:
 
     def calc_offset(self, center_fitx, ploty):
         blended_offset = 0.0
-
         for lookahead_y, weight in zip(self.lookahead_points_y, self.lookahead_weights):
-            # Find the index in ploty closest to the target lookahead y
             idx = np.argmin(np.abs(ploty - lookahead_y))
             lane_center_x = center_fitx[idx]
             offset = lane_center_x - self.img_center
             blended_offset += weight * offset
 
-        # Apply deadband to prevent jitter
         if abs(blended_offset) < self.offset_deadband:
             return 0.0
-
         return blended_offset
 
-
     def compute_curvature(self, left_fit, right_fit, ploty):
-        """
-        Estimate road curvature radius from lane polynomial fits.
-
-        Computes curvature at the bottom of the image (vehicle position)
-        and returns the average of left and right lane curvatures.
-
-        Formula (for x = ay² + by + c):
-            R = (1 + (2*a*y + b)²)^1.5  /  |2*a|
-
-        Args:
-            left_fit: Left lane polynomial coeffs or None.
-            right_fit: Right lane polynomial coeffs or None.
-            ploty: y-coordinates array.
-
-        Returns:
-            Radius of curvature in meters. Returns 0 if lanes not detected.
-        """
         if left_fit is None or right_fit is None:
             return 0.0
 
@@ -118,15 +93,6 @@ class LaneController:
         return float(np.mean(curvatures)) if curvatures else 0.0
 
     def select_speed(self, curvature):
-        """
-        Select speed command based on road curvature.
-
-        Args:
-            curvature: Radius of curvature in meters (0 = straight).
-
-        Returns:
-            Speed command (0-100 % PWM duty cycle).
-        """
         if curvature <= 0 or curvature > self.straight_radius:
             return self.max_speed
         elif curvature > self.curve_radius:
@@ -134,25 +100,7 @@ class LaneController:
         else:
             return self.low_speed
 
-    # ======================================================================
-    # FLAGS
-    # ======================================================================
-
     def build_flags(self, offset, lane_valid):
-        """
-        Build the flags byte for the STM32 packet.
-
-        Bit layout:
-            bit0: LANE_VALID (1 = lane detected)
-            bit1: DEPARTURE  (1 = lane departure warning)
-
-        Args:
-            offset: Current lateral offset in pixels.
-            lane_valid: Whether lanes were detected.
-
-        Returns:
-            Flags byte (int).
-        """
         flags = 0
         if lane_valid:
             flags |= 1
@@ -169,97 +117,56 @@ class LaneController:
 
         return flags
 
-    # ======================================================================
-    # SMOOTHING
-    # ======================================================================
-
     def smooth_steering(self, raw_steering):
-        """
-        Apply EMA smoothing to the steering angle.
-
-        Args:
-            raw_steering: Raw computed steering angle.
-
-        Returns:
-            Smoothed steering angle.
-        """
         self.smoothed_steering = (
             self.steering_ema_alpha * raw_steering +
             (1.0 - self.steering_ema_alpha) * self.smoothed_steering
         )
         return self.smoothed_steering
 
-    # ======================================================================
-    # UART SEND / RECEIVE
-    # ======================================================================
-
     def send_to_stm32(self, offset, curvature, speed, flags):
         """
-        Pack lane data into a binary frame and send to STM32.
-
-        Uses UartProtocol.pack_data(flags, offset, curvature).
-
-        Args:
-            offset: Lateral offset in pixels.
-            curvature: Radius of curvature in meters.
-            speed: Speed command (0-100).
-            flags: Flags byte.
+        Đóng gói chuẩn xác theo _TX_STRUCT = struct.Struct('<BhbB')
         """
-        packet = UartProtocol.pack_data(flags, float(offset), float(curvature))
+        # Quy đổi dữ liệu CV map sang format Control 
+        cmd_id = flags if flags > 0 else 1
+        target_speed = int(speed)
+        
+        # Giới hạn steering_error theo byte int8_t (-128 đến 127)
+        steering_error = int(max(-100, min(100, offset))) 
+        
+        brake_command = 1 if speed == 0 else 0
+
+        packet = UartProtocol.pack_data(cmd_id, target_speed, steering_error, brake_command)
         if packet:
             self.uart.send_raw_bytes(packet)
             self.last_send_time = time.time()
 
     def read_stm32_response(self):
         """
-        Read and parse response from STM32.
-
-        Returns:
-            Dict with keys 'status', 'speed', 'angle' or None if no data.
+        Đọc chính xác 9 Bytes theo RX_PACKET_SIZE mới
         """
-        raw = self.uart.read_raw_bytes(12)
-        if raw and len(raw) == 12:
+        raw = self.uart.read_raw_bytes(UartProtocol.RX_PACKET_SIZE)
+        if raw and len(raw) == UartProtocol.RX_PACKET_SIZE:
             self.last_stm32_response = UartProtocol.unpack_data(raw)
         return self.last_stm32_response
 
-    # ======================================================================
-    # MAIN UPDATE
-    # ======================================================================
-
     def update(self, left_fit, right_fit, center_fitx, ploty, lane_valid):
-        """
-        Run the full lane control pipeline for one frame.
-
-        Flow:
-            offset = calc_offset()
-            curvature = compute_curvature()
-            speed = select_speed(curvature)
-            flags = build_flags(offset, lane_valid)
-            send_to_stm32(offset, curvature, speed, flags)
-
-        Args:
-            left_fit: Left lane polynomial coeffs or None.
-            right_fit: Right lane polynomial coeffs or None.
-            center_fitx: Lane center x-positions.
-            ploty: y-coordinates corresponding to center_fitx.
-            lane_valid: Whether lanes were detected.
-
-        Returns:
-            Dict with keys: offset, curvature, speed, flags, sent, response.
-        """
         self.frame_counter += 1
 
         offset = self.calc_offset(center_fitx, ploty)
         curvature = self.compute_curvature(left_fit, right_fit, ploty)
         speed = self.select_speed(curvature)
 
-        # Reduce speed if lane not detected or departing
         if not lane_valid:
             speed = int(speed * 0.3)
 
         flags = self.build_flags(offset, lane_valid)
 
+        # Gửi dữ liệu đồng bộ
         self.send_to_stm32(offset, curvature, speed, flags)
+        
+        # Nhận dữ liệu đồng bộ
         response = self.read_stm32_response()
 
         return {
@@ -271,11 +178,7 @@ class LaneController:
             "response": response,
         }
 
-
     def reset(self):
-        """Reset all internal state (smoothing, counters, etc.)."""
         self.smoothed_steering = 0.0
         self.consecutive_departure = 0
         self.last_stm32_response = None
-
-
