@@ -21,30 +21,30 @@ void UART_Comm_Process(UART_HandleTypeDef *huart) {
     uint16_t wr_ptr = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart->hdmarx);
 
     while (rd_ptr != wr_ptr) {
-        uint16_t next_ptr = (rd_ptr + 1) % RX_BUF_SIZE;
         uint16_t bytes_available = (wr_ptr >= rd_ptr) ? (wr_ptr - rd_ptr) : (RX_BUF_SIZE - rd_ptr + wr_ptr);
 
-        if (bytes_available >= sizeof(UART_RX_Packet_t)) {
-            if (rx_dma_buffer[rd_ptr] == UART_HEADER1 && rx_dma_buffer[next_ptr] == UART_HEADER2) {
+        if (bytes_available < sizeof(UART_RX_Packet_t)) break;
 
-                uint8_t temp_buf[sizeof(UART_RX_Packet_t)];
-                uint8_t calc_checksum = 0;
+        uint16_t next_ptr = (rd_ptr + 1) % RX_BUF_SIZE;
 
+        if (rx_dma_buffer[rd_ptr] == UART_HEADER1 && rx_dma_buffer[next_ptr] == UART_HEADER2) {
+            uint8_t calc_checksum = 0;
+
+            for (uint16_t i = 2; i < sizeof(UART_RX_Packet_t) - 1; i++) {
+                calc_checksum += rx_dma_buffer[(rd_ptr + i) % RX_BUF_SIZE];
+            }
+
+            uint8_t rx_checksum = rx_dma_buffer[(rd_ptr + sizeof(UART_RX_Packet_t) - 1) % RX_BUF_SIZE];
+
+            if (rx_checksum == calc_checksum) {
+                uint8_t *dest = (uint8_t *)&current_rx_packet;
                 for (uint16_t i = 0; i < sizeof(UART_RX_Packet_t); i++) {
-                    temp_buf[i] = rx_dma_buffer[(rd_ptr + i) % RX_BUF_SIZE];
-                    if (i >= 2 && i < (sizeof(UART_RX_Packet_t) - 1)) {
-                        calc_checksum += temp_buf[i];
-                    }
+                    dest[i] = rx_dma_buffer[(rd_ptr + i) % RX_BUF_SIZE];
                 }
 
-                UART_RX_Packet_t *parsed_packet = (UART_RX_Packet_t *)temp_buf;
-
-                if (parsed_packet->checksum == calc_checksum) {
-                    current_rx_packet = *parsed_packet;
-                    rpi_brake_request = (current_rx_packet.brake_command != 0);
-                                        rd_ptr = (rd_ptr + sizeof(UART_RX_Packet_t)) % RX_BUF_SIZE;
-                    continue;
-                }
+                rpi_brake_request = (current_rx_packet.brake_command != 0);
+                rd_ptr = (rd_ptr + sizeof(UART_RX_Packet_t)) % RX_BUF_SIZE;
+                continue;
             }
         }
         rd_ptr = next_ptr;
@@ -73,19 +73,16 @@ void FSM_Get_Control_Signals(int16_t *out_speed, int8_t *out_steering, bool *out
             *out_steering = 0;
             *out_brake = true;
             break;
-
         case SYS_STATE_ALERT_LEFT:
             *out_speed = current_rx_packet.target_speed / 2;
             *out_steering = (current_rx_packet.steering_error < 0) ? 0 : current_rx_packet.steering_error;
             *out_brake = false;
             break;
-
         case SYS_STATE_ALERT_RIGHT:
             *out_speed = current_rx_packet.target_speed / 2;
             *out_steering = (current_rx_packet.steering_error > 0) ? 0 : current_rx_packet.steering_error;
             *out_brake = false;
             break;
-
         case SYS_STATE_NORMAL:
         default:
             *out_speed = current_rx_packet.target_speed;
@@ -97,7 +94,7 @@ void FSM_Get_Control_Signals(int16_t *out_speed, int8_t *out_steering, bool *out
 
 void UART_Comm_Send(UART_HandleTypeDef *huart, uint16_t dist_left, uint16_t dist_right, int16_t rpm) {
     if (huart->gState != HAL_UART_STATE_READY) {
-        return;
+        HAL_UART_AbortTransmit_IT(huart);
     }
 
     current_tx_packet.header1 = UART_HEADER1;
@@ -114,5 +111,5 @@ void UART_Comm_Send(UART_HandleTypeDef *huart, uint16_t dist_left, uint16_t dist
     }
     current_tx_packet.checksum = calc_checksum;
 
-    HAL_UART_Transmit_IT(huart, (uint8_t*)&current_tx_packet, sizeof(UART_TX_Packet_t));
+    HAL_UART_Transmit_IT(huart, raw_bytes, sizeof(UART_TX_Packet_t));
 }

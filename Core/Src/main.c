@@ -123,58 +123,58 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-      while (1)
+  while (1)
+  {
+      // Parse liên tục dữ liệu từ bộ đệm DMA tròn (100% Non-blocking)
+      UART_Comm_Process(&huart1);
+
+      uint32_t current_tick = HAL_GetTick();
+
+      if (current_tick - prev_tick >= SAMPLE_TIME_MS)
       {
-          // Parse liên tục dữ liệu từ bộ đệm DMA tròn (100% Non-blocking)
-          UART_Comm_Process(&huart1);
+          // VÁ LỖI TRÔI THỜI GIAN: Giữ chu kỳ lấy mẫu luôn cố định chính xác 20ms
+          prev_tick += SAMPLE_TIME_MS;
 
-          uint32_t current_tick = HAL_GetTick();
+          // 1. Giải phóng cờ kẹt Input Capture nếu mất xung Echo ở chu kỳ cũ
+          HC_SR04_Watchdog_Check();
 
-          if (current_tick - prev_tick >= SAMPLE_TIME_MS)
-          {
-              // VÁ LỖI TRÔI THỜI GIAN: Giữ chu kỳ lấy mẫu luôn cố định chính xác 20ms
-              prev_tick += SAMPLE_TIME_MS;
+          // 2. Thu thập kết quả đo khoảng cách của chu kỳ trước
+          dist_left = HC_SR04_Get_Distance_Left();
+          dist_right = HC_SR04_Get_Distance_Right();
 
-              // 1. Giải phóng cờ kẹt Input Capture nếu mất xung Echo ở chu kỳ cũ
-              HC_SR04_Watchdog_Check();
+          // 3. Kích phát xung Trigger mới (Đã sửa đổi tích hợp Reset Counter TIM1)
+          HC_SR04_Trigger_Start(&htim1);
 
-              // 2. Thu thập kết quả đo khoảng cách của chu kỳ trước
-              dist_left = HC_SR04_Get_Distance_Left();
-              dist_right = HC_SR04_Get_Distance_Right();
+          // 4. Cập nhật máy trạng thái FSM an toàn hệ thống
+          FSM_Update(dist_left, dist_right);
+          FSM_Get_Control_Signals(&target_speed, &steering_error, &brake_command);
 
-              // 3. Kích phát xung Trigger mới (Đã sửa đổi tích hợp Reset Counter TIM1)
-              HC_SR04_Trigger_Start(&htim1);
+          // 5. Đọc bộ đếm Encoder (Thuật toán Delta mới chống rớt xung phần cứng)
+          int16_t encoder_count = Motor_Read_Encoder();
+          actual_rpm = encoder_count * 2;
 
-              // 4. Cập nhật máy trạng thái FSM an toàn hệ thống
-              FSM_Update(dist_left, dist_right);
-              FSM_Get_Control_Signals(&target_speed, &steering_error, &brake_command);
+          // 6. Điều hướng góc Servo bằng bộ lọc Slew-rate
+          Servo_Set_Target_Angle(steering_error);
+          Servo_Update_Slew_Rate();
 
-              // 5. Đọc bộ đếm Encoder (Thuật toán Delta mới chống rớt xung phần cứng)
-              int16_t encoder_count = Motor_Read_Encoder();
-              actual_rpm = (int16_t)(((int32_t)encoder_count * 60000) / ((int32_t)ENCODER_PPR_INT * SAMPLE_TIME_MS));
+          // 7. Bù trừ động lực học cua gắt (Tự động giảm tốc chống lật xe)
+          final_target_speed = Dynamics_Compensate_Speed(target_speed, steering_error);
 
-              // 6. Điều hướng góc Servo bằng bộ lọc Slew-rate
-              Servo_Set_Target_Angle(steering_error);
-              Servo_Update_Slew_Rate();
+          // 8. Tính toán PID vận tốc động cơ DC
+          speed_pid.setpoint = final_target_speed;
+          int32_t pid_output = PID_DC_Compute(&speed_pid, actual_rpm);
 
-              // 7. Bù trừ động lực học cua gắt (Tự động giảm tốc chống lật xe)
-              final_target_speed = Dynamics_Compensate_Speed(target_speed, steering_error);
+          // 9. Thực thi PWM ra Driver DRV8871 (Tích hợp Active Brake)
+          Motor_Drive((int16_t)pid_output, brake_command);
 
-              // 8. Tính toán PID vận tốc động cơ DC
-              speed_pid.setpoint = final_target_speed;
-              int32_t pid_output = PID_DC_Compute(&speed_pid, actual_rpm);
-
-              // 9. Thực thi PWM ra Driver DRV8871 (Tích hợp Active Brake)
-              Motor_Drive((int16_t)pid_output, brake_command);
-
-              // 10. Gửi Telemetry an toàn về Raspberry Pi 5
-              UART_Comm_Send(&huart1, dist_left, dist_right, actual_rpm);
-          }
-          /* USER CODE END WHILE */
-
-          /* USER CODE BEGIN 3 */
+          // 10. Gửi Telemetry an toàn về Raspberry Pi 5
+          UART_Comm_Send(&huart1, dist_left, dist_right, actual_rpm);
       }
-      /* USER CODE END 3 */
+      /* USER CODE END WHILE */
+
+      /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
 }
 
 /**

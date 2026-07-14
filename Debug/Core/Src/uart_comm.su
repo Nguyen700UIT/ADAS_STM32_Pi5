@@ -2,4 +2,4 @@
 ../Core/Src/uart_comm.c:20:6:UART_Comm_Process	40	static
 ../Core/Src/uart_comm.c:54:6:FSM_Update	24	static
 ../Core/Src/uart_comm.c:69:6:FSM_Get_Control_Signals	24	static
-../Core/Src/uart_comm.c:98:6:UART_Comm_Send	32	static
+../Core/Src/uart_comm.c:95:6:UART_Comm_Send	32	static
