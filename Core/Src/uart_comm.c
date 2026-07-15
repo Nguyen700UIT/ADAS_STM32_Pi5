@@ -3,10 +3,11 @@
 
 static UART_RX_Packet_t current_rx_packet = {0};
 static UART_TX_Packet_t current_tx_packet = {0};
-static uint8_t rx_dma_buffer[RX_BUF_SIZE];
+static volatile uint8_t rx_dma_buffer[RX_BUF_SIZE];
 static uint16_t rd_ptr = 0;
 static System_State_t current_system_state = SYS_STATE_NORMAL;
 static bool rpi_brake_request = false;
+static uint32_t last_valid_rx_tick = 0;
 
 void UART_Comm_Init(UART_HandleTypeDef *huart) {
     memset(&current_rx_packet, 0, sizeof(UART_RX_Packet_t));
@@ -14,7 +15,8 @@ void UART_Comm_Init(UART_HandleTypeDef *huart) {
     rd_ptr = 0;
     current_system_state = SYS_STATE_NORMAL;
     rpi_brake_request = false;
-    HAL_UART_Receive_DMA(huart, rx_dma_buffer, RX_BUF_SIZE);
+    last_valid_rx_tick = HAL_GetTick();
+    HAL_UART_Receive_DMA(huart, (uint8_t *)rx_dma_buffer, RX_BUF_SIZE);
 }
 
 void UART_Comm_Process(UART_HandleTypeDef *huart) {
@@ -43,6 +45,7 @@ void UART_Comm_Process(UART_HandleTypeDef *huart) {
                 }
 
                 rpi_brake_request = (current_rx_packet.brake_command != 0);
+                last_valid_rx_tick = HAL_GetTick();
                 rd_ptr = (rd_ptr + sizeof(UART_RX_Packet_t)) % RX_BUF_SIZE;
                 continue;
             }
@@ -52,10 +55,14 @@ void UART_Comm_Process(UART_HandleTypeDef *huart) {
 }
 
 void FSM_Update(uint16_t dist_left, uint16_t dist_right) {
-    bool left_danger = (dist_left > 0 && dist_left <= DANGER_THRESHOLD_CM);
-    bool right_danger = (dist_right > 0 && dist_right <= DANGER_THRESHOLD_CM);
+    // Chỉ báo nguy hiểm phía trước nếu xe đang có lệnh chạy tiến
+    bool forward_motion = (current_rx_packet.target_speed >= 0);
 
-    if (rpi_brake_request || (left_danger && right_danger)) {
+    bool left_danger = forward_motion && (dist_left > 0 && dist_left <= DANGER_THRESHOLD_CM);
+    bool right_danger = forward_motion && (dist_right > 0 && dist_right <= DANGER_THRESHOLD_CM);
+    bool uart_timeout = (HAL_GetTick() - last_valid_rx_tick > 100);
+
+    if (rpi_brake_request || (left_danger && right_danger) || uart_timeout) {
         current_system_state = SYS_STATE_EMERGENCY_STOP;
     } else if (left_danger) {
         current_system_state = SYS_STATE_ALERT_LEFT;
@@ -94,7 +101,7 @@ void FSM_Get_Control_Signals(int16_t *out_speed, int8_t *out_steering, bool *out
 
 void UART_Comm_Send(UART_HandleTypeDef *huart, uint16_t dist_left, uint16_t dist_right, int16_t rpm) {
     if (huart->gState != HAL_UART_STATE_READY) {
-        HAL_UART_AbortTransmit_IT(huart);
+        return;
     }
 
     current_tx_packet.header1 = UART_HEADER1;

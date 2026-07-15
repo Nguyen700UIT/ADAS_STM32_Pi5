@@ -1,7 +1,7 @@
-../Core/Src/hc_sr04.c:7:6:HC_SR04_Init	16	static
-../Core/Src/hc_sr04.c:14:6:HC_SR04_Trigger_Start	16	static
-../Core/Src/hc_sr04.c:22:6:HC_SR04_Trigger_IT	16	static
-../Core/Src/hc_sr04.c:27:6:HC_SR04_IC_Callback	32	static
-../Core/Src/hc_sr04.c:84:10:HC_SR04_Get_Distance_Left	4	static
-../Core/Src/hc_sr04.c:88:10:HC_SR04_Get_Distance_Right	4	static
-../Core/Src/hc_sr04.c:92:6:HC_SR04_Watchdog_Check	4	static
+../Core/Src/hc_sr04.c:9:6:HC_SR04_Init	16	static
+../Core/Src/hc_sr04.c:15:6:HC_SR04_Trigger_Start	16	static
+../Core/Src/hc_sr04.c:30:6:HC_SR04_Trigger_IT	16	static
+../Core/Src/hc_sr04.c:36:6:HC_SR04_IC_Callback	32	static
+../Core/Src/hc_sr04.c:93:10:HC_SR04_Get_Distance_Left	4	static
+../Core/Src/hc_sr04.c:97:10:HC_SR04_Get_Distance_Right	4	static
+../Core/Src/hc_sr04.c:101:6:HC_SR04_Watchdog_Check	4	static,ignoring_inline_asm

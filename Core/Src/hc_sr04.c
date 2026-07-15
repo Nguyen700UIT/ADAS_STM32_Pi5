@@ -1,8 +1,10 @@
 #include "hc_sr04.h"
+#include "main.h"
 
 static TIM_HandleTypeDef *hc_htim;
 static HC_SR04_Sensor_t sensor_left = {0};
 static HC_SR04_Sensor_t sensor_right = {0};
+static uint8_t sensor_turn = 0; // Thêm cờ trạng thái để đo luân phiên
 
 void HC_SR04_Init(TIM_HandleTypeDef *htim) {
     hc_htim = htim;
@@ -10,17 +12,24 @@ void HC_SR04_Init(TIM_HandleTypeDef *htim) {
     HAL_TIM_IC_Start_IT(hc_htim, TIM_CHANNEL_4);
 }
 
-// Hàm mới: Gọi trong Scheduler 20ms để bắt đầu kích xung
 void HC_SR04_Trigger_Start(TIM_HandleTypeDef *trigger_htim) {
-    // Reset counter để đảm bảo luôn đủ 10µs
     __HAL_TIM_SET_COUNTER(trigger_htim, 0);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8 | GPIO_PIN_5, GPIO_PIN_SET);
+    __HAL_TIM_CLEAR_IT(trigger_htim, TIM_IT_UPDATE);
+    // Luân phiên  mỗi 20ms
+    if (sensor_turn == 0) {
+        HAL_GPIO_WritePin(TRIG1_GPIO_Port, TRIG1_Pin, GPIO_PIN_SET);
+        sensor_turn = 1;
+    } else {
+        HAL_GPIO_WritePin(TRIG2_GPIO_Port, TRIG2_Pin, GPIO_PIN_SET);
+        sensor_turn = 0;
+    }
+
     HAL_TIM_Base_Start_IT(trigger_htim);
 }
 
-// Chỉ xử lý sườn xuống của xung Trigger 10µs
 void HC_SR04_Trigger_IT(TIM_HandleTypeDef *trigger_htim) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8 | GPIO_PIN_5, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(TRIG1_GPIO_Port, TRIG1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(TRIG2_GPIO_Port, TRIG2_Pin, GPIO_PIN_RESET);
     HAL_TIM_Base_Stop_IT(trigger_htim);
 }
 
@@ -92,16 +101,21 @@ uint16_t HC_SR04_Get_Distance_Right(void) {
 void HC_SR04_Watchdog_Check(void) {
     if (!hc_htim) return;
 
-    // Chỉ reset khi state bị treo (đang đợi sườn xuống quá lâu)
+    __disable_irq();
+
     if (sensor_left.capture_flag == 1) {
         sensor_left.capture_flag = 0;
+        sensor_left.capture_val1 = 0; // Xóa rác thanh ghi
         sensor_left.distance_cm = 999;
         __HAL_TIM_SET_CAPTUREPOLARITY(hc_htim, TIM_CHANNEL_2, TIM_INPUTCHANNELPOLARITY_RISING);
     }
 
     if (sensor_right.capture_flag == 1) {
         sensor_right.capture_flag = 0;
+        sensor_right.capture_val1 = 0; // Xóa rác thanh ghi
         sensor_right.distance_cm = 999;
         __HAL_TIM_SET_CAPTUREPOLARITY(hc_htim, TIM_CHANNEL_4, TIM_INPUTCHANNELPOLARITY_RISING);
     }
+
+    __enable_irq();
 }

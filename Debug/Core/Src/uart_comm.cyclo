@@ -1,5 +1,5 @@
-../Core/Src/uart_comm.c:11:6:UART_Comm_Init	1
-../Core/Src/uart_comm.c:20:6:UART_Comm_Process	9
-../Core/Src/uart_comm.c:54:6:FSM_Update	10
-../Core/Src/uart_comm.c:69:6:FSM_Get_Control_Signals	5
-../Core/Src/uart_comm.c:95:6:UART_Comm_Send	3
+../Core/Src/uart_comm.c:12:6:UART_Comm_Init	1
+../Core/Src/uart_comm.c:22:6:UART_Comm_Process	9
+../Core/Src/uart_comm.c:57:6:FSM_Update	13
+../Core/Src/uart_comm.c:76:6:FSM_Get_Control_Signals	5
+../Core/Src/uart_comm.c:102:6:UART_Comm_Send	3

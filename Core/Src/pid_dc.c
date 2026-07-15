@@ -16,13 +16,18 @@ void PID_DC_Init(PID_DC_Controller_t *pid, int32_t kp, int32_t ki, int32_t kd, i
 int32_t PID_DC_Compute(PID_DC_Controller_t *pid, int32_t measured_value) {
     int32_t error = pid->setpoint - measured_value;
 
-    pid->integral += error;
+    // Chỉ tính toán và giới hạn tích phân khi Ki > 0
+    if (pid->Ki > 0) {
+        pid->integral += error;
 
-    int32_t max_integral = (pid->out_max * pid->scaling_factor) / (pid->Ki > 0 ? pid->Ki : 1);
-    int32_t min_integral = (pid->out_min * pid->scaling_factor) / (pid->Ki > 0 ? pid->Ki : 1);
+        int32_t max_integral = (pid->out_max * pid->scaling_factor) / pid->Ki;
+        int32_t min_integral = (pid->out_min * pid->scaling_factor) / pid->Ki;
 
-    if (pid->integral > max_integral) pid->integral = max_integral;
-    else if (pid->integral < min_integral) pid->integral = min_integral;
+        if (pid->integral > max_integral) pid->integral = max_integral;
+        else if (pid->integral < min_integral) pid->integral = min_integral;
+    } else {
+        pid->integral = 0;
+    }
 
     int32_t derivative = error - pid->prev_error;
 
