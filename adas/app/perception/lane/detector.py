@@ -216,6 +216,8 @@ class LaneDetector:
     
     def compute_center(self, left_fitx, right_fitx):
         center_fitx = (left_fitx + right_fitx)/2
+        print("center min:", np.min(center_fitx))
+        print("center max:", np.max(center_fitx))
         return center_fitx
 
     def _fit_lane(self, x_values, y_values):

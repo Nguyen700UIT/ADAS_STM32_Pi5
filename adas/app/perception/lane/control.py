@@ -1,22 +1,35 @@
+import sys
+from pathlib import Path
+
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[4] 
+
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+
+import cv2 as cv
 import time
 import numpy as np
 
-try:
-    from . import lane_control_config as cfg
-except ImportError:
-    import lane_control_config as cfg
-
-try:
-    from communication.protocol import UartProtocol
-    from communication.uart import UartConfiguration
-except ImportError:
-    from ...communication.protocol import UartProtocol
-    from ...communication.uart import UartConfiguration
+from adas.app.config import lane_control_config as cfg
+from adas.app.communication.protocol import UartProtocol
+from adas.app.communication.uart import UartConfiguration
 
 
 class LaneController:
-    def __init__(self, port=None, baudrate=None, timeout=None):
-        self.img_center = cfg.IMG_CENTER
+    def __init__(self, port=None, baudrate=None, timeout=None, img_width=640, warp_matrix=None):
+        # Pre-compute the car's center position in warped (bird's-eye) space
+        # by transforming the image center through the perspective warp
+        self.img_width = img_width
+        self.warp_matrix = warp_matrix
+        if warp_matrix is not None:
+            car_pt = np.float32([[[img_width / 2, img_width - 1]]])
+            car_warped = cv.perspectiveTransform(car_pt, warp_matrix)
+            self.img_center_warped = car_warped[0, 0, 0]
+        else:
+            self.img_center_warped = cfg.IMG_CENTER
+
         self.lookahead_points_y = cfg.LOOKAHEAD_POINTS_Y
         self.lookahead_weights = cfg.LOOKAHEAD_POINTS_WEIGHTS
         self.n_lookahead = len(self.lookahead_points_y)
@@ -65,7 +78,8 @@ class LaneController:
         for lookahead_y, weight in zip(self.lookahead_points_y, self.lookahead_weights):
             idx = np.argmin(np.abs(ploty - lookahead_y))
             lane_center_x = center_fitx[idx]
-            offset = lane_center_x - self.img_center
+            # Both lane_center_x and img_center_warped are in warped space
+            offset = lane_center_x - self.img_center_warped
             blended_offset += weight * offset
 
         if abs(blended_offset) < self.offset_deadband:
