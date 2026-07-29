@@ -74,6 +74,9 @@ class LaneController:
         self.uart_connected = False
 
     def calc_offset(self, center_fitx, ploty):
+        if center_fitx is None or ploty is None:
+            return 0.0
+
         blended_offset = 0.0
         for lookahead_y, weight in zip(self.lookahead_points_y, self.lookahead_weights):
             idx = np.argmin(np.abs(ploty - lookahead_y))
@@ -141,6 +144,7 @@ class LaneController:
     def send_to_stm32(self, offset, curvature, speed, flags):
         """
         Đóng gói chuẩn xác theo _TX_STRUCT = struct.Struct('<BhbB')
+        Returns True if packet was sent successfully.
         """
         # Quy đổi dữ liệu CV map sang format Control 
         cmd_id = flags if flags > 0 else 1
@@ -153,8 +157,11 @@ class LaneController:
 
         packet = UartProtocol.pack_data(cmd_id, target_speed, steering_error, brake_command)
         if packet:
-            self.uart.send_raw_bytes(packet)
-            self.last_send_time = time.time()
+            success = self.uart.send_raw_bytes(packet)
+            if success:
+                self.last_send_time = time.time()
+            return success
+        return False
 
     def read_stm32_response(self):
         """
@@ -178,7 +185,7 @@ class LaneController:
         flags = self.build_flags(offset, lane_valid)
 
         # Gửi dữ liệu đồng bộ
-        self.send_to_stm32(offset, curvature, speed, flags)
+        sent = self.send_to_stm32(offset, curvature, speed, flags)
         
         # Nhận dữ liệu đồng bộ
         response = self.read_stm32_response()
@@ -188,7 +195,7 @@ class LaneController:
             "curvature": curvature,
             "speed": speed,
             "flags": flags,
-            "sent": True,
+            "sent": sent,
             "response": response,
         }
 
