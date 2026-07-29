@@ -15,7 +15,7 @@ STRAIGHT_RADIUS = 4000
 CURVE_RADIUS = 1500
 SHARP_CURVE_RADIUS = 700
 
-#Speed range for the 8-byte packet (int16, -3599 to 3599)
+#Speed (PWMW duty cycle)
 # MAX_SPEED = full speed forward, NORMAL = cruising, LOW = sharp turns
 # Negative values = reverse
 MAX_SPEED = 40
@@ -24,6 +24,11 @@ LOW_SPEED = 20
 
 #Deadband
 OFFSET_DEADBAND = 5
+
+# Maximum pixel offset (warped space) that corresponds to ±100 steering error.
+# Offsets beyond this are clamped. Tuned for 640x480 bird's-eye view.
+# Increase if car oversteers, decrease if it understeers.
+MAX_OFFSET_PX = 200
 
 #Lane change offset 
 LANE_CHANGE_OFFSET = 200

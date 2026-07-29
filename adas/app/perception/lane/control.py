@@ -18,13 +18,15 @@ from adas.app.communication.uart import UartConfiguration
 
 
 class LaneController:
-    def __init__(self, port=None, baudrate=None, timeout=None, img_width=640, warp_matrix=None):
+    def __init__(self, port=None, baudrate=None, timeout=None, img_width=640, img_height=480, warp_matrix=None):
         # Pre-compute the car's center position in warped (bird's-eye) space
         # by transforming the image center through the perspective warp
         self.img_width = img_width
+        self.img_height = img_height
         self.warp_matrix = warp_matrix
         if warp_matrix is not None:
-            car_pt = np.float32([[[img_width / 2, img_width - 1]]])
+            # Map the bottom-center of the image to warped space
+            car_pt = np.float32([[[img_width / 2, img_height - 1]]])
             car_warped = cv.perspectiveTransform(car_pt, warp_matrix)
             self.img_center_warped = car_warped[0, 0, 0]
         else:
@@ -150,8 +152,14 @@ class LaneController:
         cmd_id = flags if flags > 0 else 1
         target_speed = int(speed)
         
-        # Giới hạn steering_error theo byte int8_t (-128 đến 127)
-        steering_error = int(max(-100, min(100, offset))) 
+        # Normalize pixel offset to [-100, 100] steering error range
+        # offset is in pixels (warped space), MAX_OFFSET_PX defines full-scale
+        normalized = offset / cfg.MAX_OFFSET_PX * 100.0
+        steering_error = int(max(-100, min(100, normalized)))
+
+        # Apply EMA smoothing to prevent jerky steering
+        steering_error = int(self.smooth_steering(steering_error))
+        steering_error = max(-100, min(100, steering_error))
         
         brake_command = 1 if speed == 0 else 0
 

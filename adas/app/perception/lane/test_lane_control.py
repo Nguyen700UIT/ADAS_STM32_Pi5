@@ -28,14 +28,14 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Path setup – ensure we can import sibling modules
 # ---------------------------------------------------------------------------
-_APP_DIR = Path(__file__).resolve().parents[2]
+_APP_DIR = Path(__file__).resolve().parents[4]
 if str(_APP_DIR) not in sys.path:
     sys.path.insert(0, str(_APP_DIR))
 
-from perception.lane.detector import LaneDetector
-from config import lane_control_config as ctrl_cfg
-from communication.protocol import UartProtocol
-from communication.uart import UartConfiguration
+from adas.app.perception.lane.detector import LaneDetector
+from adas.app.config import lane_control_config as ctrl_cfg
+from adas.app.communication.protocol import UartProtocol
+from adas.app.communication.uart import UartConfiguration
 
 # ---------------------------------------------------------------------------
 # Default paths
@@ -71,7 +71,9 @@ def send_to_stm32(uart: UartConfiguration, offset: float, speed: int, flags: int
     """
     cmd_id = flags if flags > 0 else 1
     target_speed = int(speed)
-    steering_error = int(max(-100, min(100, offset)))  # clamp to int8 range
+    # Normalize pixel offset to [-100, 100] steering error range
+    normalized = offset / ctrl_cfg.MAX_OFFSET_PX * 100.0
+    steering_error = int(max(-100, min(100, normalized)))
     brake_command = 1 if speed == 0 else 0
 
     packet = UartProtocol.pack_data(cmd_id, target_speed, steering_error, brake_command)
@@ -101,7 +103,9 @@ def calc_offset(center_fitx, ploty, img_center_warped):
         return 0.0
     blended_offset = 0.0
     for lookahead_y, weight in zip(ctrl_cfg.LOOKAHEAD_POINTS_Y, ctrl_cfg.LOOKAHEAD_POINTS_WEIGHTS):
-        idx = np.argmin(np.abs(ploty - lookahead_y))
+        # Scale lookahead points from 480p to current resolution
+        scaled_lookahead = int(lookahead_y * (ploty[-1] / 480.0)) if ploty[-1] > 480 else lookahead_y
+        idx = np.argmin(np.abs(ploty - scaled_lookahead))
         lane_center_x = center_fitx[idx]
         offset = lane_center_x - img_center_warped
         blended_offset += weight * offset
@@ -227,6 +231,9 @@ def draw_control_overlay(frame, offset, curvature, speed, flags, frame_idx, uart
 
 def main():
     args = parse_args()
+    if "DISPLAY" not in os.environ and not args.no_display:
+        print("[INFO] No DISPLAY environment variable found. Forcing --no-display mode.")
+        args.no_display = True
 
     # ------------------------------------------------------------------
     # Open video
@@ -293,7 +300,16 @@ def main():
     # center_fitx) are all in warped coordinates, so the offset must be
     # computed relative to the car's position in warped space.
     warp_matrix, _ = detector._get_warp_matrices(width, height)
-    car_pt = np.float32([[[width / 2, height - 1]]])
+    # Use the bottom edge of the source trapezoid to avoid extrapolation out of bounds
+    try:
+        from adas.app.perception.lane import lane_config
+        bottom_src_y = lane_config.WARP_SRC[0][1]
+        scale_y = (height - 1) / (lane_config.IMAGE_HEIGHT - 1)
+        car_y = bottom_src_y * scale_y
+    except:
+        car_y = height - 1
+        
+    car_pt = np.float32([[[width / 2, car_y]]])
     car_warped = cv.perspectiveTransform(car_pt, warp_matrix)
     img_center_warped = car_warped[0, 0, 0]
     print(f"[INFO]  Image center ({width/2}, {height-1}) → warped x = {img_center_warped:.1f}")
@@ -386,11 +402,19 @@ def main():
                 status = "[TX-OK]" if sent else "[TX-FAIL]"
                 # Build hex for display
                 cmd_id = flags if flags > 0 else 1
-                steering_error = int(max(-100, min(100, offset)))
+                normalized_log = offset / ctrl_cfg.MAX_OFFSET_PX * 100.0
+                steering_error = int(max(-100, min(100, normalized_log)))
                 brake = 1 if speed == 0 else 0
                 pkt = UartProtocol.pack_data(cmd_id, int(speed), steering_error, brake)
                 hex_str = " ".join(f"{b:02X}" for b in pkt) if pkt else "N/A"
-                print(f"  [{frame_count:>5d}/{total_frames}]  {ctrl_line}  {status}  TX:{hex_str}")
+                
+                rx_info = ""
+                if last_stm32_response:
+                    rx_info = f"  |  RX L:{last_stm32_response['distance_left']}cm R:{last_stm32_response['distance_right']}cm RPM:{last_stm32_response['actual_rpm']}"
+                else:
+                    rx_info = "  |  RX: None"
+                    
+                print(f"  [{frame_count:>5d}/{total_frames}]  {ctrl_line}  {status}  TX:{hex_str}{rx_info}")
             else:
                 print(f"  [{frame_count:>5d}/{total_frames}]  {ctrl_line}  [SIM]")
 
