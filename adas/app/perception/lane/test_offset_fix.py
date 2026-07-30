@@ -209,13 +209,15 @@ def main():
     print(f"  MAX_OFFSET_PX = {ctrl_cfg.MAX_OFFSET_PX}")
     print(f"{'=' * 60}\n")
 
-    # Init detector & compute warped car center
+    # Init detector & compute setpoint
     detector = LaneDetector()
     warp_matrix, _ = detector._get_warp_matrices(width, height)
-    car_pt = np.float32([[[width / 2, height - 1]]])
-    car_warped = cv.perspectiveTransform(car_pt, warp_matrix)
-    img_center_warped = car_warped[0, 0, 0]
-    print(f"[INFO] Car center ({width/2:.0f}, {height-1}) -> warped x = {img_center_warped:.1f}")
+    from adas.app.config import lane_config
+    scale_x = width / lane_config.IMAGE_WIDTH
+    dst_left = lane_config.WARP_DST[0][0] * scale_x
+    dst_right = lane_config.WARP_DST[2][0] * scale_x
+    img_center_warped = (dst_left + dst_right) / 2.0
+    print(f"[INFO] Lane setpoint (center of WARP_DST) -> warped x = {img_center_warped:.1f}")
 
     # Video writer
     fourcc = cv.VideoWriter_fourcc(*"mp4v")

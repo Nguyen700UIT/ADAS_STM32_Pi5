@@ -25,10 +25,13 @@ class LaneController:
         self.img_height = img_height
         self.warp_matrix = warp_matrix
         if warp_matrix is not None:
-            # Map the bottom-center of the image to warped space
-            car_pt = np.float32([[[img_width / 2, img_height - 1]]])
-            car_warped = cv.perspectiveTransform(car_pt, warp_matrix)
-            self.img_center_warped = car_warped[0, 0, 0]
+            # The ideal lane center (setpoint) is the center of the WARP_DST rectangle.
+            # We use this instead of the mapped camera center to correctly handle
+            # off-center camera mounts (which make WARP_SRC asymmetric).
+            from adas.app.config import lane_config
+            dst_left = lane_config.WARP_DST[0][0]
+            dst_right = lane_config.WARP_DST[2][0]
+            self.img_center_warped = (dst_left + dst_right) / 2.0
         else:
             self.img_center_warped = cfg.IMG_CENTER
 
