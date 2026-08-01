@@ -35,8 +35,8 @@ class LaneController:
         else:
             self.img_center_warped = cfg.IMG_CENTER
 
-        self.lookahead_points_y = cfg.LOOKAHEAD_POINTS_Y
-        self.lookahead_weights = cfg.LOOKAHEAD_POINTS_WEIGHTS
+        self.lookahead_points_y = getattr(cfg, 'LOOKAHEAD_POINTS_Y', [200, 320, 380])
+        self.lookahead_weights = getattr(cfg, 'LOOKAHEAD_POINTS_WEIGHTS', [0.2, 0.3, 0.5])
         self.n_lookahead = len(self.lookahead_points_y)
 
         self.servo_center = cfg.SERVO_CENTER
@@ -94,6 +94,43 @@ class LaneController:
             return 0.0
         return blended_offset
 
+    def pure_pursuit_control(self, center_fitx, ploty):
+        if center_fitx is None or ploty is None or len(ploty) == 0:
+            return 0.0
+
+        # Vehicle origin is assumed to be bottom center of warped image
+        origin_x = self.img_center_warped
+        origin_y = self.img_height
+
+        # Lookahead distance and wheelbase from config (with defaults)
+        from adas.app.config import lane_control_config as cfg
+        Ld = getattr(cfg, 'LOOKAHEAD_DISTANCE_PX', 250)
+        wheelbase = getattr(cfg, 'WHEELBASE_PX', 270)
+
+        # Target y is Ld pixels ahead (y decreases going up)
+        target_y = origin_y - Ld
+
+        # Find closest point on path
+        idx = np.argmin(np.abs(ploty - target_y))
+        target_x = center_fitx[idx]
+        actual_target_y = ploty[idx]
+
+        dx = target_x - origin_x
+        dy = origin_y - actual_target_y # positive distance forward
+
+        Ld_sq = dx**2 + dy**2
+        if Ld_sq == 0:
+            return 0.0
+
+        # Pure pursuit curvature gamma = 2 * dx / Ld^2
+        gamma = 2 * dx / Ld_sq
+        
+        # Steering angle delta = arctan(gamma * wheelbase)
+        steering_rad = np.arctan(gamma * wheelbase)
+        steering_deg = float(np.degrees(steering_rad))
+
+        return steering_deg
+
     def compute_curvature(self, left_fit, right_fit, ploty):
         if left_fit is None or right_fit is None:
             return 0.0
@@ -146,7 +183,7 @@ class LaneController:
         )
         return self.smoothed_steering
 
-    def send_to_stm32(self, offset, curvature, speed, flags):
+    def send_to_stm32(self, steering_val, curvature, speed, flags, is_angle=False):
         """
         Đóng gói chuẩn xác theo _TX_STRUCT = struct.Struct('<BhbB')
         Returns True if packet was sent successfully.
@@ -155,9 +192,14 @@ class LaneController:
         cmd_id = flags if flags > 0 else 1
         target_speed = int(speed)
         
-        # Normalize pixel offset to [-100, 100] steering error range
-        # offset is in pixels (warped space), MAX_OFFSET_PX defines full-scale
-        normalized = offset / cfg.MAX_OFFSET_PX * 100.0
+        if is_angle:
+            # Normalize steering angle to [-100, 100] steering error range
+            normalized = steering_val / self.max_steering_angle * 100.0
+        else:
+            # Normalize pixel offset to [-100, 100] steering error range
+            # offset is in pixels (warped space), MAX_OFFSET_PX defines full-scale
+            normalized = steering_val / cfg.MAX_OFFSET_PX * 100.0
+            
         steering_error = int(max(-100, min(100, normalized)))
 
         # Apply EMA smoothing to prevent jerky steering
@@ -187,6 +229,7 @@ class LaneController:
         self.frame_counter += 1
 
         offset = self.calc_offset(center_fitx, ploty)
+        steering_angle = self.pure_pursuit_control(center_fitx, ploty)
         curvature = self.compute_curvature(left_fit, right_fit, ploty)
         speed = self.select_speed(curvature)
 
@@ -196,13 +239,14 @@ class LaneController:
         flags = self.build_flags(offset, lane_valid)
 
         # Gửi dữ liệu đồng bộ
-        sent = self.send_to_stm32(offset, curvature, speed, flags)
+        sent = self.send_to_stm32(steering_angle, curvature, speed, flags, is_angle=True)
         
         # Nhận dữ liệu đồng bộ
         response = self.read_stm32_response()
 
         return {
             "offset": offset,
+            "steering_angle": steering_angle,
             "curvature": curvature,
             "speed": speed,
             "flags": flags,

@@ -113,6 +113,32 @@ def calc_offset(center_fitx, ploty, img_center_warped):
         return 0.0
     return blended_offset
 
+def pure_pursuit_control(center_fitx, ploty, img_center_warped, img_height):
+    if center_fitx is None or ploty is None or len(ploty) == 0:
+        return 0.0
+
+    origin_x = img_center_warped
+    origin_y = img_height
+
+    Ld = getattr(ctrl_cfg, 'LOOKAHEAD_DISTANCE_PX', 250)
+    wheelbase = getattr(ctrl_cfg, 'WHEELBASE_PX', 270)
+
+    target_y = origin_y - Ld
+    idx = np.argmin(np.abs(ploty - target_y))
+    target_x = center_fitx[idx]
+    actual_target_y = ploty[idx]
+
+    dx = target_x - origin_x
+    dy = origin_y - actual_target_y
+
+    Ld_sq = dx**2 + dy**2
+    if Ld_sq == 0:
+        return 0.0
+
+    gamma = 2 * dx / Ld_sq
+    steering_rad = np.arctan(gamma * wheelbase)
+    return float(np.degrees(steering_rad))
+
 
 def compute_curvature(left_fit, right_fit, ploty):
     """Compute average road curvature radius."""
@@ -160,7 +186,7 @@ def build_flags(offset, lane_valid, consecutive_departure):
     return flags, consecutive_departure
 
 
-def format_control_info(offset, curvature, speed, flags) -> str:
+def format_control_info(offset, steering_angle, curvature, speed, flags) -> str:
     curve_label = (
         "STRAIGHT" if curvature > ctrl_cfg.STRAIGHT_RADIUS
         else "CURVE" if curvature > ctrl_cfg.CURVE_RADIUS
@@ -171,11 +197,11 @@ def format_control_info(offset, curvature, speed, flags) -> str:
         warn = " [DEPARTURE]"
     elif not (flags & 1):
         warn = " [NO LANE]"
-    return (f"Offset:{offset:+7.1f}px  Curv:{curvature:>6.0f}m  "
+    return (f"Offset:{offset:+7.1f}px  Steer:{steering_angle:+6.1f}deg  Curv:{curvature:>6.0f}m  "
             f"({curve_label:>8s})  Speed:{speed:>2d}  Flags:{flags:>2d}{warn}")
 
 
-def draw_control_overlay(frame, offset, curvature, speed, flags, frame_idx, uart_connected, stm32_response):
+def draw_control_overlay(frame, offset, steering_angle, curvature, speed, flags, frame_idx, uart_connected, stm32_response):
     h, w = frame.shape[:2]
     overlay = frame.copy()
     bar_h = 80
@@ -187,7 +213,7 @@ def draw_control_overlay(frame, offset, curvature, speed, flags, frame_idx, uart
     cv.putText(frame, mode_str, (w - 220, 30), cv.FONT_HERSHEY_SIMPLEX, 0.65, mode_color, 2)
     cv.putText(frame, f"Frame: {frame_idx}", (10, 25), cv.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
 
-    info = format_control_info(offset, curvature, speed, flags)
+    info = format_control_info(offset, steering_angle, curvature, speed, flags)
     cv.putText(frame, info, (10, 55), cv.FONT_HERSHEY_SIMPLEX, 0.55, (180, 230, 255), 2)
 
     # Offset bar
@@ -369,6 +395,7 @@ def main():
 
         # ---- Compute control signals ----
         offset = calc_offset(center_fitx, ploty, img_center_warped)
+        steering_angle = pure_pursuit_control(center_fitx, ploty, img_center_warped, height)
         curvature = compute_curvature(left_fit, right_fit, ploty)
         speed = select_speed(curvature)
         if not lane_valid:
@@ -390,7 +417,7 @@ def main():
 
         # ---- Console logging ----
         if frame_count % max(1, int(fps / 2)) == 0 or not lane_valid or (flags & 2):
-            ctrl_line = format_control_info(offset, curvature, speed, flags)
+            ctrl_line = format_control_info(offset, steering_angle, curvature, speed, flags)
             if uart_connected:
                 status = "[TX-OK]" if sent else "[TX-FAIL]"
                 # Build hex for display
@@ -413,7 +440,7 @@ def main():
 
         # ---- Draw HUD ----
         if show_debug:
-            annotated = draw_control_overlay(annotated, offset, curvature, speed, flags,
+            annotated = draw_control_overlay(annotated, offset, steering_angle, curvature, speed, flags,
                                              frame_count, uart_connected, last_stm32_response)
 
         # ---- Save ----

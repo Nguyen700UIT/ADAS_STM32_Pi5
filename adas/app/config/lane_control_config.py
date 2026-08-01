@@ -1,8 +1,12 @@
 IMG_CENTER = 320
 
-#Lookahead points
-LOOKAHEAD_POINTS_Y = [200, 320, 380]
-LOOKAHEAD_POINTS_WEIGHTS = [0.2, 0.3, 0.5]
+# Pure Pursuit Parameters
+# Assuming lane is 26cm real-world width, and ~473 pixels in warped view.
+# Scale: ~18.2 pixels/cm. For a car with 15cm wheelbase, it's ~270 pixels.
+WHEELBASE_PX = 270
+LOOKAHEAD_DISTANCE_PX = 250
+LOOKAHEAD_POINTS_Y = [200, 320, 380] # Kept for backward compatibility
+LOOKAHEAD_POINTS_WEIGHTS = [0.2, 0.3, 0.5] # Kept for backward compatibility if needed
 
 #Steering angle (degrees)
 SERVO_CENTER = 0
