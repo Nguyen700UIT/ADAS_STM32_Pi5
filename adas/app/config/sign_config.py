@@ -17,3 +17,8 @@ TURN_SPEED = 20
 # Stop command values
 STOP_SPEED = 0
 STOP_STEERING = 0
+
+# EMA ramp rates (0.0 = no change, 1.0 = instant jump)
+# Lower values = smoother but slower response
+STEERING_RAMP_ALPHA = 0.15
+SPEED_RAMP_ALPHA = 0.2

@@ -29,6 +29,14 @@ class SignController:
         self.stop_speed = cfg.STOP_SPEED
         self.stop_steering = cfg.STOP_STEERING
 
+        # EMA ramp rates
+        self.steering_ramp_alpha = cfg.STEERING_RAMP_ALPHA
+        self.speed_ramp_alpha = cfg.SPEED_RAMP_ALPHA
+
+        # Smoothed current values (start at neutral)
+        self.current_steering = 0.0
+        self.current_speed = 0.0
+
         # UART connection (same pattern as LaneController)
         self.uart = UartConfiguration(
             port=port or "/dev/ttyAMA0",
@@ -57,40 +65,58 @@ class SignController:
     # ------------------------------------------------------------------
     # Core sign actions
     # ------------------------------------------------------------------
-    def _send_command(self, cmd_id, speed, steering, brake):
-        """Pack and send a single UART frame to the STM32."""
-        steering = int(max(-100, min(100, steering)))
-        packet = UartProtocol.pack_data(cmd_id, int(speed), steering, int(brake))
+    def _ramp(self, current, target, alpha):
+        """Exponential moving average: blend *current* toward *target*."""
+        return alpha * target + (1.0 - alpha) * current
+
+    def _send_command(self, cmd_id, target_speed, target_steering, brake):
+        """Ramp toward *target_speed* / *target_steering*, then send."""
+        self.current_steering = self._ramp(
+            self.current_steering, target_steering, self.steering_ramp_alpha
+        )
+        self.current_speed = self._ramp(
+            self.current_speed, target_speed, self.speed_ramp_alpha
+        )
+
+        steering_out = int(max(-100, min(100, round(self.current_steering))))
+        speed_out = int(max(0, round(self.current_speed)))
+
+        packet = UartProtocol.pack_data(cmd_id, speed_out, steering_out, int(brake))
         if packet:
             self.uart.send_raw_bytes(packet)
             self.last_send_time = time.time()
 
     def execute_turn_left(self):
-        """Steer the car to the left at a reduced speed."""
+        """Ramp steering toward full left at a reduced speed."""
         self._send_command(
             cmd_id=1,
-            speed=self.turn_speed,
-            steering=self.turn_left_steering,
+            target_speed=self.turn_speed,
+            target_steering=self.turn_left_steering,
             brake=0,
         )
 
     def execute_turn_right(self):
-        """Steer the car to the right at a reduced speed."""
+        """Ramp steering toward full right at a reduced speed."""
         self._send_command(
             cmd_id=1,
-            speed=self.turn_speed,
-            steering=self.turn_right_steering,
+            target_speed=self.turn_speed,
+            target_steering=self.turn_right_steering,
             brake=0,
         )
 
     def execute_stop(self):
-        """Bring the car to a full stop (speed=0, brake=1)."""
+        """Ramp speed down to zero and engage brake."""
         self._send_command(
             cmd_id=1,
-            speed=self.stop_speed,
-            steering=self.stop_steering,
+            target_speed=self.stop_speed,
+            target_steering=self.stop_steering,
             brake=1,
         )
+
+    def reset(self):
+        """Reset smoothed values to neutral (call on state transitions)."""
+        self.current_steering = 0.0
+        self.current_speed = 0.0
 
     # ------------------------------------------------------------------
     # Telemetry
