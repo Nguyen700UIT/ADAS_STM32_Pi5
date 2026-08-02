@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADAS Premium Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <main class="dashboard">
+        <header class="header">
+            <h1 class="brand">ADAS Dashboard</h1>
+            <div class="connection-status" id="conn-status">
+                <div class="dot"></div>
+                ĐANG KẾT NỐI
+            </div>
+        </header>
+
+        <section class="stream-wrap">
+            <div class="stream-frame">
+                <img src="/video" alt="Camera stream ADAS">
+            </div>
+            <div class="cyber-line"></div>
+        </section>
+
+        <aside class="telemetry">
+            <div class="metric full-width" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <p class="metric-label">Trạng thái hệ thống</p>
+                    <p class="metric-value" style="font-size: 24px; color: var(--accent);">Hệ thống Đang Hoạt Động</p>
+                </div>
+                <span id="status" class="status-pill">--</span>
+            </div>
+            
+            <div class="metric">
+                <p class="metric-label">Vận tốc (Target)</p>
+                <p class="metric-value"><span id="speed">--</span><small>cm/s</small></p>
+            </div>
+            
+            <div class="metric">
+                <p class="metric-label">Vòng tua (RPM)</p>
+                <p class="metric-value"><span id="actual_rpm">--</span><small>v/p</small></p>
+            </div>
+
+            <div class="metric">
+                <p class="metric-label">Góc lái (Steering)</p>
+                <p class="metric-value"><span id="angle">--</span><small>%</small></p>
+            </div>
+            
+            <div class="metric">
+                <p class="metric-label">Lệnh Phanh</p>
+                <p class="metric-value"><span id="brake_command" class="status-pill" style="min-height: 32px; font-size: 14px;">--</span></p>
+            </div>
+            
+            <div class="metric">
+                <p class="metric-label">Siêu âm (Trái)</p>
+                <p class="metric-value"><span id="distance_left">--</span><small>cm</small></p>
+            </div>
+            
+            <div class="metric">
+                <p class="metric-label">Siêu âm (Phải)</p>
+                <p class="metric-value"><span id="distance_right">--</span><small>cm</small></p>
+            </div>
+
+            <div class="updated" id="updated">Khởi tạo dữ liệu...</div>
+        </aside>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

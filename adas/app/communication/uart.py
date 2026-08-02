@@ -1,4 +1,9 @@
-import serial
+try:
+    import serial
+except ImportError:
+    print("[WARNING] pyserial not found. UART communication will be disabled.")
+    serial = None
+
 import threading
 
 class UartConfiguration:
@@ -11,6 +16,8 @@ class UartConfiguration:
 
     def connect(self):
         with self.lock:
+            if serial is None:
+                return False
             try:
                 self.serial_port = serial.Serial(
                     port=self.port,
@@ -21,7 +28,7 @@ class UartConfiguration:
                     timeout=self.timeout
                 )
                 return True
-            except serial.SerialException:
+            except Exception:
                 return False
 
     def send_raw_bytes(self, data_bytes: bytes):
