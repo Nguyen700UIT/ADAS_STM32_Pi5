@@ -1,7 +1,8 @@
 from ultralytics import YOLO
 import os
-class SignDetetor:
-    def __int__(self):
+
+class SignDetector:
+    def __init__(self):
         root = os.getcwd()
         path = os.path.join(root, "model/sign_model.onnx")
         self.model = YOLO(path, task="detect")
@@ -20,4 +21,3 @@ class SignDetetor:
                 detected_list.append(sign_name)
         
         return detected_list
-    
