@@ -1,0 +1,21 @@
+16:13:33 **** Incremental Build of configuration Debug for project line_detection_stm32 ****
+make -j12 all 
+arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/main.o"
+arm-none-eabi-gcc -o "line_detection_stm32.elf" @"objects.list"   -mcpu=cortex-m3 -T"D:\line_detection\line_detection_stm32\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="line_detection_stm32.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Finished building target: line_detection_stm32.elf
+ 
+arm-none-eabi-size  line_detection_stm32.elf 
+arm-none-eabi-objdump -h -S line_detection_stm32.elf  > "line_detection_stm32.list"
+   text	   data	    bss	    dec	    hex	filename
+  21580	     16	   2200	  23796	   5cf4	line_detection_stm32.elf
+Finished building: default.size.stdout
+ 
+Finished building: line_detection_stm32.list
+ 
+09:48:03 **** Build of configuration Debug for project line_detection_stm32 ****
+make -j12 all 
+arm-none-eabi-size  line_detection_stm32.elf 
+   text	   data	    bss	    dec	    hex	filename
+  21580	     16	   2200	  23796	   5cf4	line_detection_stm32.elf
+Finished building: default.size.stdout
+ 

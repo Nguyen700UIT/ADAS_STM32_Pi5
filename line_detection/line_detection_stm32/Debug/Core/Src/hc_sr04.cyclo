@@ -1,0 +1,7 @@
+../Core/Src/hc_sr04.c:9:6:HC_SR04_Init	1
+../Core/Src/hc_sr04.c:15:6:HC_SR04_Trigger_Start	2
+../Core/Src/hc_sr04.c:30:6:HC_SR04_Trigger_IT	1
+../Core/Src/hc_sr04.c:36:6:HC_SR04_IC_Callback	11
+../Core/Src/hc_sr04.c:93:10:HC_SR04_Get_Distance_Left	2
+../Core/Src/hc_sr04.c:97:10:HC_SR04_Get_Distance_Right	2
+../Core/Src/hc_sr04.c:101:6:HC_SR04_Watchdog_Check	4

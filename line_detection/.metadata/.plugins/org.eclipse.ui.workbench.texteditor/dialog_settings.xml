@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="hasShownOverlayPopupBefore" value="true"/>
+	<item key="replaceBarOpen" value="false"/>
+	<list key="searchhistory">
+		<item value="test"/>
+		<item value="tesst"/>
+		<item value="sửa"/>
+		<item value="//[cite: 12]"/>
+		<item value="uint32_t timer_period = __HAL_TIM_GET_AUTORELOAD(htim);"/>
+		<item value="MX_TIM1_Init"/>
+		<item value="static void MX_TIM1_Init(void)"/>
+	</list>
+</section>
