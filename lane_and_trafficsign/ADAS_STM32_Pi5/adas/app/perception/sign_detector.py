@@ -10,7 +10,7 @@ class SignDetector:
         # 3. Tự tải yolov8n.pt từ mạng (fallback cuối cùng)
         
         _file_dir = Path(__file__).resolve().parent
-        # Từ perception/traffic_sign/ → lên 5 cấp → ADAS_STM32_Pi5 (workspace root)
+        # Từ perception/ → lên 6 cấp → ADAS_STM32_Pi5 (workspace root)
         _workspace_root = _file_dir.parents[5]
         
         # Thử tìm model chuyên dụng biển báo

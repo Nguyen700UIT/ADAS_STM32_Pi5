@@ -148,7 +148,7 @@ def main():
             cv.putText(annotated, f"Signs: {', '.join(detected_signs)}", (10, 80), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         # C. DECISION FUSION
-        fusion_status = fusion_ctrl.update(detected_signs, left_fit, right_fit, center_fitx, ploty, lane_valid)
+        fusion_status = fusion_ctrl.update(detected_signs, left_fit, right_fit, center_fitx, ploty, lane_valid, frame=frame)
 
         # ================================================================
         # D. TRÍCH XUẤT DỮ LIỆU UART 2 CHIỀU ĐẨY LÊN WEB DASHBOARD
@@ -189,6 +189,20 @@ def main():
 
         # ---- Vẽ HUD trạng thái Fusion ----
         cv.putText(annotated, f"Fusion: {state_name.upper()}", (10, 110), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+        # ---- Vẽ HUD thông tin Navigation (Dijkstra + ArUco) ----
+        nav_info = fusion_status.get("nav_info")
+        if nav_info:
+            nav_action = nav_info.get("action", "---")
+            nav_marker = nav_info.get("marker_id", "---")
+            nav_goal = nav_info.get("goal", "---")
+            nav_path = nav_info.get("path", [])
+            cv.putText(annotated, f"NAV: {nav_action} | Marker:{nav_marker} | Goal:{nav_goal}",
+                       (10, 140), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            if nav_path:
+                path_str = " > ".join(map(str, nav_path[:8]))  # Hiển thị tối đa 8 node
+                cv.putText(annotated, f"Path: {path_str}",
+                           (10, 165), cv.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 0), 1)
 
         # ---- Cập nhật Web Dashboard (đầy đủ UART 2 chiều) ----
         update_vehicle_state(
