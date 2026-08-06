@@ -38,6 +38,7 @@ def get_action(angle):
 def mouse_callback(event, x, y, flags, param):
     global next_intersection_id, next_endpoint_id, selected_node, nodes, edges
     
+    # 1. TẠO NODE MỚI (CLICK ĐÚP CHUỘT TRÁI)
     if event == cv2.EVENT_LBUTTONDBLCLK:
         # Tránh việc click trùng vào node đã có
         for nid, pos in nodes.items():
@@ -55,8 +56,8 @@ def mouse_callback(event, x, y, flags, param):
         nodes[nid] = (x, y)
         print(f"[+] Đã thêm Node {nid} tại ({x}, {y})")
         
+    # 2. CHỌN NODE HOẶC NỐI ĐƯỜNG (CLICK CHUỘT TRÁI 1 LẦN)
     elif event == cv2.EVENT_LBUTTONDOWN:
-        # Kiểm tra xem có click trúng node nào không để nối dây
         for nid, pos in nodes.items():
             if math.hypot(pos[0]-x, pos[1]-y) < 15:
                 if selected_node is None:
@@ -68,10 +69,25 @@ def mouse_callback(event, x, y, flags, param):
                         edge = (min(selected_node, nid), max(selected_node, nid))
                         if edge not in edges:
                             edges.append(edge)
-                            print(f"[+] Đã nối đường giữa Node {selected_node} và Node {nid}")
-                    selected_node = None # Hủy chọn sau khi nối
+                            print(f"[+] Đã NỐI đường giữa Node {selected_node} và Node {nid}")
+                        else:
+                            edges.remove(edge) # Nếu đã nối rồi thì xóa đi (Toggle)
+                            print(f"[-] Đã XÓA đường nối giữa Node {selected_node} và Node {nid}")
+                    selected_node = None # Hủy chọn sau khi thao tác
                 return
         selected_node = None # Click ra chỗ trống thì hủy chọn
+
+    # 3. XÓA NODE VÀ CÁC ĐƯỜNG LIÊN QUAN (CLICK CHUỘT PHẢI)
+    elif event == cv2.EVENT_RBUTTONDOWN:
+        for nid, pos in list(nodes.items()):
+            if math.hypot(pos[0]-x, pos[1]-y) < 15:
+                del nodes[nid] # Xóa node
+                # Xóa luôn các đường có chứa node này
+                edges = [e for e in edges if e[0] != nid and e[1] != nid]
+                print(f"[-] Đã XÓA TẬN GỐC Node {nid} và các đường đi qua nó")
+                if selected_node == nid:
+                    selected_node = None
+                return
 
 def export_config():
     """Xuất ra định dạng python dict cho file map_config.py"""
@@ -133,11 +149,12 @@ def main():
     print("=============================================")
     print("🎯 CÔNG CỤ TẠO GRAPH & ACTION_MAP (OpenCV)")
     print("=============================================")
-    print("1. [Click đúp chuột trái]       : Tạo NGÃ TƯ (ID từ 1-49)")
-    print("2. [Giữ SHIFT + Click đúp]      : Tạo ĐIỂM ĐỖ (ID từ 50-99)")
-    print("3. [Click Node A -> Click Node B] : Nối 2 điểm thành 1 con đường")
-    print("4. Nhấn phím 'e'                : Xuất ra file config")
-    print("5. Nhấn phím 'q' hoặc ESC       : Thoát")
+    print("1. [Click đúp chuột TRÁI]       : Tạo NGÃ TƯ (ID từ 1-49)")
+    print("2. [Giữ SHIFT + Đúp chuột TRÁI] : Tạo ĐIỂM ĐỖ (ID từ 50-99)")
+    print("3. [Click Node A -> Node B]     : NỐI / XÓA NỐI 2 điểm")
+    print("4. [Click chuột PHẢI vào Node]  : XÓA Node")
+    print("5. Nhấn phím 'e'                : Xuất ra file config")
+    print("6. Nhấn phím 'q' hoặc ESC       : Thoát")
     print("=============================================")
     
     global selected_node
