@@ -10,8 +10,12 @@ class SignDetector:
         # 3. Tự tải yolov8n.pt từ mạng (fallback cuối cùng)
         
         _file_dir = Path(__file__).resolve().parent
-        # Từ perception/ → lên 6 cấp → ADAS_STM32_Pi5 (workspace root)
-        _workspace_root = _file_dir.parents[5]
+        # Tìm workspace root động: đi lên cây thư mục cho đến khi gặp file marker
+        _workspace_root = _file_dir
+        for ancestor in _file_dir.parents:
+            if (ancestor / ".git").exists() or (ancestor / "adas.service").exists():
+                _workspace_root = ancestor
+                break
         
         # Thử tìm model chuyên dụng biển báo
         model_candidates = [

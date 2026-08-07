@@ -33,7 +33,7 @@ class LaneDetector:
         self.prev_left_fit = None
         self.prev_right_fit = None
 
-        self.consecutive_invalid_frames = lane_config.CONSECUTIVE_INVALID_FRAMES
+        self.consecutive_invalid_frames = 0
         self.max_invalid_frames = lane_config.MAX_INVALID_FRAMES
         
         self.blur_kernel = lane_config.GAUSSIAN_BLUR_KERNEL

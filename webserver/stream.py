@@ -1,19 +1,25 @@
 import cv2 as cv
 import time
+import threading
 
-global_frame = None
+_frame_lock = threading.Lock()
+_global_frame = None
 
 def set_global_frame(frame):
-    global global_frame
-    global_frame = frame
+    global _global_frame
+    with _frame_lock:
+        _global_frame = frame.copy() if frame is not None else None
 
 def gen():
     while True:
-        if global_frame is None:
+        with _frame_lock:
+            frame = _global_frame.copy() if _global_frame is not None else None
+
+        if frame is None:
             time.sleep(0.05)
             continue
 
-        ret, buffer = cv.imencode('.jpg', global_frame)
+        ret, buffer = cv.imencode('.jpg', frame)
         if not ret:
             time.sleep(0.05)
             continue

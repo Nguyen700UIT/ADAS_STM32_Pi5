@@ -66,6 +66,10 @@ class FusionController:
         self.navigation_active = False  # Đang trong chế độ dẫn đường?
         self.arrived = False        # Đã đến đích?
 
+        # ---- Anti-flicker: Yêu cầu lane_valid liên tục N frame ----
+        self._consecutive_lane_valid = 0
+        self._lane_valid_threshold = 5  # Số frame liên tiếp cần thiết
+
     # ------------------------------------------------------------------
     # Navigation API
     # ------------------------------------------------------------------
@@ -144,6 +148,25 @@ class FusionController:
         # CHẾ ĐỘ DẪN ĐƯỜNG (Dijkstra + ArUco)
         # ==============================================================
         if self.navigation_active and frame is not None:
+            # ---- BUG FIX: Biển STOP vẫn phải được xử lý trong Navigation mode ----
+            has_stop = cfg.CLASS_STOP in detected_signs
+            if has_stop and self.state != FusionState.STOPPED:
+                self.state = FusionState.STOPPED
+                self.sign_ctrl.execute_stop()
+                print("[NAV] 🛑 Biển STOP phát hiện → DỪNG XE!")
+                return self._status("NAV: STOP sign detected → STOPPED",
+                                    nav_info=self._nav_info(action="STOP"))
+            # Nếu đang STOPPED do biển STOP, chờ biển biến mất
+            if self.state == FusionState.STOPPED and not self.arrived:
+                if has_stop:
+                    self.sign_ctrl.execute_stop()
+                    return self._status("NAV: STOP sign still visible — holding",
+                                        nav_info=self._nav_info(action="STOP"))
+                else:
+                    self.state = FusionState.LANE_FOLLOWING
+                    self._consecutive_lane_valid = 0
+                    print("[NAV] ✅ Biển STOP đã biến mất → Tiếp tục lộ trình")
+
             return self._update_navigation(
                 frame, detected_signs,
                 left_fit, right_fit, center_fitx, ploty, lane_valid
@@ -293,10 +316,15 @@ class FusionController:
             return self._status("🏁 Đã đến đích - xe đang dừng",
                                 nav_info=self._nav_info(action="STOP"))
 
-        # TURNING_LEFT: Chờ biển biến mất + có làn → quay về bám làn
+        # TURNING_LEFT: Chờ lane_valid liên tục N frame → quay về bám làn
         if self.state == FusionState.TURNING_LEFT:
             if lane_valid:
+                self._consecutive_lane_valid += 1
+            else:
+                self._consecutive_lane_valid = 0
+            if self._consecutive_lane_valid >= self._lane_valid_threshold:
                 self.state = FusionState.LANE_FOLLOWING
+                self._consecutive_lane_valid = 0
                 lane_result = self.lane_ctrl.update(
                     left_fit, right_fit, center_fitx, ploty, lane_valid
                 )
@@ -310,7 +338,12 @@ class FusionController:
         # TURNING_RIGHT: tương tự
         if self.state == FusionState.TURNING_RIGHT:
             if lane_valid:
+                self._consecutive_lane_valid += 1
+            else:
+                self._consecutive_lane_valid = 0
+            if self._consecutive_lane_valid >= self._lane_valid_threshold:
                 self.state = FusionState.LANE_FOLLOWING
+                self._consecutive_lane_valid = 0
                 lane_result = self.lane_ctrl.update(
                     left_fit, right_fit, center_fitx, ploty, lane_valid
                 )
@@ -387,7 +420,12 @@ class FusionController:
         # ----- TURNING_LEFT state -----
         if self.state == FusionState.TURNING_LEFT:
             if not has_left and lane_valid:
+                self._consecutive_lane_valid += 1
+            else:
+                self._consecutive_lane_valid = 0
+            if not has_left and self._consecutive_lane_valid >= self._lane_valid_threshold:
                 self.state = FusionState.LANE_FOLLOWING
+                self._consecutive_lane_valid = 0
                 lane_result = self.lane_ctrl.update(
                     left_fit, right_fit, center_fitx, ploty, lane_valid
                 )
@@ -402,7 +440,12 @@ class FusionController:
         # ----- TURNING_RIGHT state -----
         if self.state == FusionState.TURNING_RIGHT:
             if not has_right and lane_valid:
+                self._consecutive_lane_valid += 1
+            else:
+                self._consecutive_lane_valid = 0
+            if not has_right and self._consecutive_lane_valid >= self._lane_valid_threshold:
                 self.state = FusionState.LANE_FOLLOWING
+                self._consecutive_lane_valid = 0
                 lane_result = self.lane_ctrl.update(
                     left_fit, right_fit, center_fitx, ploty, lane_valid
                 )
@@ -423,6 +466,7 @@ class FusionController:
     def reset(self):
         """Reset the fusion controller to its initial state."""
         self.state = FusionState.LANE_FOLLOWING
+        self._consecutive_lane_valid = 0
         self.lane_ctrl.reset()
         self.cancel_navigation()
 

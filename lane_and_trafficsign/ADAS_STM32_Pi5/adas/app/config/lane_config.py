@@ -25,8 +25,8 @@ WARP_SRC = [
 WARP_DST = [
     [int(IMAGE_WIDTH * 0.2), IMAGE_MAX_Y],
     [int(IMAGE_WIDTH * 0.2), 0],
-    [int(IMAGE_WIDTH * 0.94), 0],
-    [int(IMAGE_WIDTH * 0.94), IMAGE_MAX_Y],
+    [int(IMAGE_WIDTH * 0.8), 0],
+    [int(IMAGE_WIDTH * 0.8), IMAGE_MAX_Y],
 ]
 
 
@@ -67,5 +67,4 @@ YELLOW_MAX_V = 255
 SHOW_LANE_LINES = True            # Draw final filtered lane lines
 SHOW_WARP = False                 # Show bird's-eye view
 
-CONSECUTIVE_INVALID_FRAMES  = 0
 MAX_INVALID_FRAMES = 10

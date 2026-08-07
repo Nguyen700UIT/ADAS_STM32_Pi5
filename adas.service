@@ -9,7 +9,7 @@ Type=simple
 User=donien
 Group=donien
 WorkingDirectory=/home/donien/ADAS_STM32_Pi5
-Environment="PYTHONPATH=/home/donien/ADAS_STM32_Pi5/lane_and_trafficsign/ADAS_STM32_Pi5"
+Environment="PYTHONPATH=/home/donien/ADAS_STM32_Pi5:/home/donien/ADAS_STM32_Pi5/lane_and_trafficsign/ADAS_STM32_Pi5:/home/donien/ADAS_STM32_Pi5/lane_and_trafficsign/ADAS_STM32_Pi5/adas/app"
 Environment="PATH=/home/donien/ADAS_STM32_Pi5/venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/home/donien/ADAS_STM32_Pi5/venv/bin/python /home/donien/ADAS_STM32_Pi5/lane_and_trafficsign/ADAS_STM32_Pi5/adas/app/main.py --camera --no-display
 Restart=on-failure

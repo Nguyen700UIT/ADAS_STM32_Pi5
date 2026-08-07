@@ -20,7 +20,7 @@ Dựa trên phân tích yêu cầu từ các tin nhắn thảo luận của team
 
 ## Giai Đoạn 2: Triển khai Hệ thống Dẫn đường ArUco + Dijkstra (Navigation System)
 **Mục tiêu:** In, dán ArUco Marker lên sa bàn và kiểm tra xe tự dẫn đường đến đích.
-**Trạng thái phần mềm:** ✅ Đã hoàn thành toàn bộ code (`map_config.py`, `aruco_detector.py`, `routing.py`, `fusion.py`).
+**Trạng thái phần mềm:** ✅ Đã hoàn thành toàn bộ code (`map_config.py`, `aruco_detector.py`, `routing.py`, `fusion.py`).phân tích toàn bộ dự án c
 
 * **Công việc cụ thể:**
   1. **In ArUco Marker:** Chạy script `mapADAS_4m/generate_aruco_markers.py` để sinh ra file PDF chứa 23 tấm Marker chuẩn `DICT_4X4_100`. Các ID cần in: `1-18` (ngã tư) và `50-54` (bãi đỗ). Kích thước mỗi tấm: **4x4 cm đến 5x5 cm**.

@@ -21,12 +21,12 @@ def main():
     print(f"[*] Đang khởi động Webserver...")
     print(f"[*] Đường dẫn AI module (app): {adas_path}")
 
-    # Đảm bảo import stream, state từ thư mục webserver hiện tại
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    # Đảm bảo import stream, state từ thư mục root (đã add ở trên)
+    sys.path.insert(0, ROOT_DIR)
 
     # Chạy Flask server từ server.py
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    import server
+    os.chdir(ROOT_DIR)
+    from webserver import server
     server.app.run(host="0.0.0.0", port=5000)
 
 if __name__ == "__main__":

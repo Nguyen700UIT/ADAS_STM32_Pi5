@@ -169,8 +169,6 @@ def main():
             # Normalize steering angle thành steering_error [-100, 100]
             tx_steering_error = int(max(-100, min(100, tx_steering / ctrl_cfg.MAX_STEERING_ANGLE * 100.0)))
             tx_brake = 1 if tx_speed == 0 else 0
-            # Đọc telemetry từ lane_ctrl (đã đọc trong update())
-            response = lane_res.get("response", None)
             
             status_code = tx_flags
         else:
@@ -178,11 +176,11 @@ def main():
             tx_steering_error = int(max(-100, min(100, sign_ctrl.current_steering)))
             tx_flags = 3 if state_name == "stopped" else 2
             tx_brake = 1 if tx_speed == 0 else 0
-            response = sign_ctrl.read_stm32_response()
             
             status_code = tx_flags
 
-        # --- Dữ liệu RX (STM32 → Pi) ---
+        # --- Dữ liệu RX (STM32 → Pi) — Đọc 1 lần duy nhất từ UART chung ---
+        response = uart.read_latest_telemetry()
         rx_distance_left = response["distance_left"] if response else 999
         rx_distance_right = response["distance_right"] if response else 999
         rx_actual_rpm = response["actual_rpm"] if response else 0

@@ -1,4 +1,5 @@
 from picamera2 import Picamera2
+import cv2 as cv
 
 class Camera:
     def __init__(self):
@@ -11,4 +12,8 @@ class Camera:
         self.picam2.start()
 
     def get_frame(self):
-        return self.picam2.capture_array()
+        frame = self.picam2.capture_array()
+        if frame is None:
+            return None
+        # PiCamera2 RGB888 trả về RGB, nhưng OpenCV xử lý BGR
+        return cv.cvtColor(frame, cv.COLOR_RGB2BGR)

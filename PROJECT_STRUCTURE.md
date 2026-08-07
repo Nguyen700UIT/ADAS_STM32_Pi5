@@ -19,6 +19,7 @@ lane_and_trafficsign/
         │   ├── perception/           # Lớp Nhận Diện (Đôi mắt)
         │   │   ├── lane_detector.py  # Xử lý ảnh OpenCV (Warp, Threshold, PolyFit) để tìm vạch kẻ đường.
         │   │   ├── sign_detector.py  # Xử lý AI YOLOv8 để tìm Biển báo giao thông.
+        │   │   ├── aruco_detector.py # Xử lý OpenCV để quét đọc các ArUco Marker (định vị cục bộ).
         │   │   └── videos/           # Chứa các file .mp4 dùng để test mô phỏng.
         │   │
         │   ├── control/              # Lớp Điều Khiển (Chân tay)
@@ -26,7 +27,8 @@ lane_and_trafficsign/
         │   │   └── sign_controller.py# Tính tốc độ phanh và góc bẻ lái tĩnh khi rẽ theo biển báo.
         │   │
         │   ├── decision/             # Lớp Ra Quyết Định (Máy trạng thái)
-        │   │   └── fusion.py         # Nhận biết khi nào nên bám làn, khi nào nên rẽ/phanh.
+        │   │   ├── fusion.py         # Nhận biết khi nào nên bám làn, rẽ, phanh dựa trên Sensor Fusion.
+        │   │   └── routing.py        # Thuật toán State-based Dijkstra tính toán lộ trình từ A->B.
         │   │
         │   ├── communication/        # Lớp Giao Tiếp (Phần cứng)
         │   │   ├── uart.py           # Đọc/Ghi dữ liệu Serial với mạch STM32.
@@ -38,7 +40,8 @@ lane_and_trafficsign/
         │   └── config/               # Lớp Cấu Hình (Hằng số)
         │       ├── lane_config.py    # Tọa độ cắt ảnh (ROI), dải màu HSV.
         │       ├── lane_control_config.py # Thông số Pure Pursuit, tốc độ xe, hệ số PID.
-        │       └── sign_config.py    # Khai báo các class biển báo (stop, turn_left...).
+        │       ├── sign_config.py    # Khai báo các class biển báo (stop, turn_left...).
+        │       └── map_config.py     # Cấu hình bản đồ đồ thị số cho Dijkstra.
         │
         └── tests/                    # Sân tập: Chỉ dùng để test tính năng rời rạc
             ├── test_lane_control.py  # Test độc lập phần bám làn không có biển báo.
@@ -65,7 +68,7 @@ webserver/
 │
 └── static/                 # Tài nguyên tĩnh
     ├── css/style.css       # File thiết kế (Dark mode, giao diện mờ).
-    ├── js/script.js        # File logic (Fetch JSON mỗi 100ms để xoay vô lăng, đổi số).
+    ├── js/main.js          # File logic (Fetch JSON mỗi 100ms để xoay vô lăng, đổi số).
     └── images/             # Hình ảnh logo, vô lăng (steering-wheel.png)...
 ```
 
@@ -84,14 +87,29 @@ line_detection/
 
 ---
 
-## 4. 🗃️ Các File & Thư Mục Phụ Trợ (Nằm tại Root)
+## 4. 🗺️ `mapADAS_4m/` (Công cụ Bản đồ & ArUco Marker)
+Thư mục chứa các công cụ sinh bản đồ đồ thị số (Graph) và tạo file in ấn ArUco marker.
+
+```text
+mapADAS_4m/
+├── map_tool.py             # Công cụ Tool GUI giúp click tọa độ trên ảnh để tạo bản đồ số.
+├── map_config_generated.py # File output sinh ra từ tool chứa Graph và Bảng hành động (Action map).
+├── generate_aruco_markers.py # Script Python dùng OpenCV để sinh ảnh ArUco Marker.
+├── aruco_markers_ADAS.pdf  # File PDF đã tổng hợp để in ra dán lên sa bàn.
+└── aruco_individual/       # Chứa các ảnh rời rạc của từng Marker ID (từ 1 -> 54).
+```
+
+---
+
+## 5. 🗃️ Các File & Thư Mục Phụ Trợ (Nằm tại Root)
 
 ```text
 /home/donien/ADAS_STM32_Pi5/
 │
-├── adas.service          # File cấu hình Systemd: Giúp Raspberry Pi tự động chạy main.py khi cắm điện.
-├── venv/                 # Môi trường ảo (Virtual Environment) chứa các thư viện Python (OpenCV, YOLO, Flask).
-├── yolov8n.pt            # File Model AI mặc định của YOLO (Sẽ được thay bằng Model biển báo của bạn).
-├── mapADAS_4m/           # (Thư mục dự trữ/Bản đồ sa hình)
-└── WORK_PLAN.md          # Kế hoạch phát triển dự án.
+├── adas.service                         # File cấu hình Systemd: Giúp Raspberry Pi tự động chạy main.py khi cắm điện.
+├── venv/                                # Môi trường ảo (Virtual Environment) chứa các thư viện Python.
+├── yolov8n.pt                           # File Model AI mặc định của YOLO.
+├── PROJECT_STRUCTURE.md                 # Chính là tài liệu này.
+├── SYSTEM_DESIGN_Dijkstra_ArUco.md      # Tài liệu mô tả lý thuyết thuật toán Dijkstra + ArUco của dự án.
+└── WORK_PLAN_Control_Train_Models.md    # Kế hoạch phát triển dự án chi tiết qua các giai đoạn.
 ```
