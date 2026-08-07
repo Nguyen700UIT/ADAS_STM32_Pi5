@@ -252,11 +252,11 @@ if __name__ == "__main__":
     print("📋 Test Case 3: Chặn Quay Đầu - Node 1 → Node 2 (prev=2)")
     path3, cost3 = router.find_path(start=1, goal=2, initial_prev=2)
     if cost3 == INF:
-        print("   ✅ Thuật toán đã CHẶN thành công quay đầu! (Cost = ∞)")
+        print("   Thuật toán đã CHẶN thành công quay đầu! (Cost = ∞)")
     else:
         print(f"   Lộ trình vòng: {' → '.join(map(str, path3))}")
         print(f"   Tổng khoảng cách: {cost3} cm")
-        print("   ✅ Thuật toán tìm đường VÒNG thay vì quay đầu!")
+        print("   Thuật toán tìm đường VÒNG thay vì quay đầu!")
 
     print("\n" + "=" * 60)
     print("  TEST HOÀN TẤT")

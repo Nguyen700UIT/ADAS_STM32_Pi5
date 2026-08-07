@@ -32,10 +32,10 @@ let updateFreqs = [];
 
 const FUSION_STATE_LABELS = {
     "idle": "Chờ khởi động",
-    "lane_following": "🛣️ Bám làn đường",
-    "turning_left": "⬅️ Đang rẽ trái",
-    "turning_right": "➡️ Đang rẽ phải",
-    "stopped": "🛑 Dừng xe",
+    "lane_following": "Bám làn đường",
+    "turning_left": "Đang rẽ trái",
+    "turning_right": "Đang rẽ phải",
+    "stopped": "Dừng xe",
 };
 
 function numberText(value, digits) {

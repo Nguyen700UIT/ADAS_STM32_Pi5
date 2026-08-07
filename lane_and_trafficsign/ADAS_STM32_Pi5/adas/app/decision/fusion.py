@@ -94,10 +94,10 @@ class FusionController:
                 self.prev_node = None
                 self.curr_node = start_node
                 self.navigation_active = True
-                print(f"[NAV] 🗺️ Lộ trình: {' → '.join(map(str, path))}")
-                print(f"[NAV] 📏 Tổng khoảng cách: {cost} cm")
+                print(f"[NAV] Lộ trình: {' → '.join(map(str, path))}")
+                print(f"[NAV] Tổng khoảng cách: {cost} cm")
             else:
-                print(f"[NAV] ❌ Không tìm được đường từ {start_node} đến {goal_node}!")
+                print(f"[NAV] Không tìm được đường từ {start_node} đến {goal_node}!")
                 self.navigation_active = False
         else:
             # Chờ ArUco phát hiện Node đầu tiên
@@ -106,7 +106,7 @@ class FusionController:
             self.path_index = 0
             self.prev_node = None
             self.curr_node = None
-            print(f"[NAV] 🎯 Đích đến: {goal_node}. Đang chờ ArUco phát hiện vị trí hiện tại...")
+            print(f"[NAV] Đích đến: {goal_node}. Đang chờ ArUco phát hiện vị trí hiện tại...")
 
     def cancel_navigation(self):
         """Hủy chế độ dẫn đường, quay về chế độ biển báo."""
@@ -119,7 +119,7 @@ class FusionController:
         self.arrived = False
         self.last_seen_marker = None
         self.state = FusionState.LANE_FOLLOWING
-        print("[NAV] ❎ Đã hủy dẫn đường.")
+        print("[NAV] Đã hủy dẫn đường.")
 
     # ------------------------------------------------------------------
     # Public API
@@ -153,7 +153,7 @@ class FusionController:
             if has_stop and self.state != FusionState.STOPPED:
                 self.state = FusionState.STOPPED
                 self.sign_ctrl.execute_stop()
-                print("[NAV] 🛑 Biển STOP phát hiện → DỪNG XE!")
+                print("[NAV] Biển STOP phát hiện → DỪNG XE!")
                 return self._status("NAV: STOP sign detected → STOPPED",
                                     nav_info=self._nav_info(action="STOP"))
             # Nếu đang STOPPED do biển STOP, chờ biển biến mất
@@ -165,7 +165,7 @@ class FusionController:
                 else:
                     self.state = FusionState.LANE_FOLLOWING
                     self._consecutive_lane_valid = 0
-                    print("[NAV] ✅ Biển STOP đã biến mất → Tiếp tục lộ trình")
+                    print("[NAV] Biển STOP đã biến mất → Tiếp tục lộ trình")
 
             return self._update_navigation(
                 frame, detected_signs,
@@ -217,15 +217,16 @@ class FusionController:
             self.arrived = True
             self.state = FusionState.STOPPED
             self.sign_ctrl.execute_stop()
-            print(f"[NAV] 🏁 ĐÃ ĐẾN ĐÍCH! (Node {marker_id})")
+            print(f"[NAV] ĐÃ ĐẾN ĐÍCH! (Node {marker_id})")
+            self.arrived = True
             return self._status(
-                f"🏁 ĐÃ ĐẾN ĐÍCH Node {marker_id}",
+                f"ĐÃ ĐẾN ĐÍCH Node {marker_id}",
                 nav_info=self._nav_info(marker_id=marker_id, action="STOP")
             )
 
         # ---- Marker là Node Đích khác (đi ngang qua, chưa phải đích) ----
         if map_config.is_destination_node(marker_id) and marker_id != self.goal_node:
-            print(f"[NAV] 🏪 Đi ngang qua điểm đỗ {marker_id} (không phải đích)")
+            print(f"[NAV] Đi ngang qua điểm đỗ {marker_id} (không phải đích)")
 
         # ---- Lần đầu phát hiện vị trí (chưa biết mình ở đâu) ----
         if self.curr_node is None:
@@ -313,7 +314,7 @@ class FusionController:
 
         if self.arrived:
             self.sign_ctrl.execute_stop()
-            return self._status("🏁 Đã đến đích - xe đang dừng",
+            return self._status("Đã đến đích - xe đang dừng",
                                 nav_info=self._nav_info(action="STOP"))
 
         # TURNING_LEFT: Chờ lane_valid liên tục N frame → quay về bám làn
