@@ -11,7 +11,7 @@ CLASS_TURN_RIGHT = "turn_right"
 TURN_LEFT_STEERING = -80       # strong left offset
 TURN_RIGHT_STEERING = 80       # strong right offset
 
-# Speed during turning manoeuvres (PWM duty cycle)
+# Target motor speed during turning manoeuvres (RPM)
 TURN_SPEED = 20
 
 # Stop command values
@@ -22,3 +22,7 @@ STOP_STEERING = 0
 # Lower values = smoother but slower response
 STEERING_RAMP_ALPHA = 0.15
 SPEED_RAMP_ALPHA = 0.2
+
+# STOP must remain asserted long enough to survive a one-frame detector flicker.
+STOP_MIN_HOLD_SECONDS = 2.0
+STOP_CLEAR_CONSECUTIVE_FRAMES = 5

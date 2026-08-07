@@ -27,6 +27,7 @@
 #include "servo.h"
 #include "hc_sr04.h"
 #include <stdbool.h>
+#include <limits.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,7 +56,7 @@ DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 #define SAMPLE_TIME_MS 20
-#define ENCODER_PPR_INT 1500
+#define ENCODER_COUNTS_PER_REV 1500
 
 PID_DC_Controller_t speed_pid;
 uint32_t prev_tick = 0;
@@ -67,6 +68,15 @@ int16_t final_target_speed = 0;
 int16_t actual_rpm = 0;
 uint16_t dist_left = 999;
 uint16_t dist_right = 999;
+
+static int16_t Encoder_Delta_To_RPM(int16_t encoder_delta)
+{
+  int32_t rpm = ((int32_t)encoder_delta * 60000) /
+                (ENCODER_COUNTS_PER_REV * SAMPLE_TIME_MS);
+  if (rpm > INT16_MAX) return INT16_MAX;
+  if (rpm < INT16_MIN) return INT16_MIN;
+  return (int16_t)rpm;
+}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -169,8 +179,8 @@ int main(void)
                     }
                     last_brake_state = brake_command;
           // 5. Đọc bộ đếm Encoder (Thuật toán Delta mới chống rớt xung phần cứng)
-          int16_t encoder_count = Motor_Read_Encoder();
-          actual_rpm = encoder_count * 2;
+          int16_t encoder_delta = Motor_Read_Encoder();
+          actual_rpm = Encoder_Delta_To_RPM(encoder_delta);
 
           // 6. Điều hướng góc Servo bằng bộ lọc Slew-rate
           Servo_Set_Target_Angle(steering_error);

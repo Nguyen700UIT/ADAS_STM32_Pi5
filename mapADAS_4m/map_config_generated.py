@@ -1,5 +1,25 @@
-# Đây là file được tạo tự động bởi tool
-# Đặt file này vào thư mục: config/map_config.py
+# Đây là file được tạo tự động bởi tool.
+# Tương thích API với app/config/map_config.py.
+
+from enum import Enum
+
+
+class TurnAction(Enum):
+    STRAIGHT = "straight"
+    TURN_LEFT = "turn_left"
+    TURN_RIGHT = "turn_right"
+
+
+DIRECTION_NODE_MAX_ID = 49
+DESTINATION_NODE_MIN_ID = 50
+
+
+def is_destination_node(node_id: int) -> bool:
+    return node_id >= DESTINATION_NODE_MIN_ID
+
+
+def is_direction_node(node_id: int) -> bool:
+    return 1 <= node_id <= DIRECTION_NODE_MAX_ID
 
 GRAPH = {
     1: {2: 112, 13: 109, 18: 67},
@@ -127,3 +147,17 @@ ACTION_MAP = {
     (1, 18, 14): 'TURN_LEFT',
     (14, 18, 1): 'TURN_RIGHT',
 }
+
+_ACTION_NAMES = {
+    "FORWARD": TurnAction.STRAIGHT,
+    "TURN_LEFT": TurnAction.TURN_LEFT,
+    "TURN_RIGHT": TurnAction.TURN_RIGHT,
+}
+ACTION_MAP = {key: _ACTION_NAMES[action] for key, action in ACTION_MAP.items()}
+
+
+def get_action(prev_node: int, curr_node: int, next_node: int) -> TurnAction:
+    key = (prev_node, curr_node, next_node)
+    if key not in ACTION_MAP:
+        raise KeyError(f"Không tìm thấy hành động cho bộ ba {key}.")
+    return ACTION_MAP[key]

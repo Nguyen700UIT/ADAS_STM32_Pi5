@@ -100,6 +100,10 @@ def main():
         else:
             print(f"[UART] Failed on {args.port} -> Fallback to SIMULATION")
 
+    if uart_connected:
+        # Keep STM32's 100 ms watchdog satisfied even if AI inference is slow.
+        uart.start_heartbeat(period_s=0.02)
+
     # 4. Setup AI & Fusion
     lane_detector = LaneDetector()
     sign_detector = SignDetector()
@@ -179,7 +183,7 @@ def main():
             
             status_code = tx_flags
 
-        # --- Dữ liệu RX (STM32 → Pi) — Đọc 1 lần duy nhất từ UART chung ---
+        # --- Dữ liệu RX (STM32 → Pi) — Chỉ main loop được đọc Serial ---
         response = uart.read_latest_telemetry()
         rx_distance_left = response["distance_left"] if response else 999
         rx_distance_right = response["distance_right"] if response else 999

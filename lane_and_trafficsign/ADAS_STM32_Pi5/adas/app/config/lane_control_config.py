@@ -19,9 +19,9 @@ STRAIGHT_RADIUS = 4000
 CURVE_RADIUS = 1500
 SHARP_CURVE_RADIUS = 700
 
-#Speed (PWMW duty cycle)
-# MAX_SPEED = full speed forward, NORMAL = cruising, LOW = sharp turns
-# Negative values = reverse
+# Target speed in motor RPM. STM32 closes the loop from encoder RPM and
+# converts the PID output to PWM internally.
+# Negative values request reverse motion.
 MAX_SPEED = 40
 NORMAL_SPEED = 30
 LOW_SPEED = 20

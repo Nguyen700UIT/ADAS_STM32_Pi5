@@ -1,4 +1,5 @@
 from enum import Enum
+import time
 
 try:
     from ..config import sign_config as cfg
@@ -65,6 +66,8 @@ class FusionController:
         self.last_seen_marker = None  # Marker ID gần nhất đã xử lý
         self.navigation_active = False  # Đang trong chế độ dẫn đường?
         self.arrived = False        # Đã đến đích?
+        self._stop_started_at = None
+        self._consecutive_stop_clear = 0
 
         # ---- Anti-flicker: Yêu cầu lane_valid liên tục N frame ----
         self._consecutive_lane_valid = 0
@@ -118,6 +121,7 @@ class FusionController:
         self.curr_node = None
         self.arrived = False
         self.last_seen_marker = None
+        self._reset_stop_guard()
         self.state = FusionState.LANE_FOLLOWING
         print("[NAV] Đã hủy dẫn đường.")
 
@@ -151,21 +155,21 @@ class FusionController:
             # ---- BUG FIX: Biển STOP vẫn phải được xử lý trong Navigation mode ----
             has_stop = cfg.CLASS_STOP in detected_signs
             if has_stop and self.state != FusionState.STOPPED:
-                self.state = FusionState.STOPPED
-                self.sign_ctrl.execute_stop()
+                self._enter_stop()
                 print("[NAV] Biển STOP phát hiện → DỪNG XE!")
                 return self._status("NAV: STOP sign detected → STOPPED",
                                     nav_info=self._nav_info(action="STOP"))
-            # Nếu đang STOPPED do biển STOP, chờ biển biến mất
+            # STOP is held for a minimum time plus several clear frames.  A
+            # single missed detector frame must never release the brake.
             if self.state == FusionState.STOPPED and not self.arrived:
-                if has_stop:
-                    self.sign_ctrl.execute_stop()
-                    return self._status("NAV: STOP sign still visible — holding",
-                                        nav_info=self._nav_info(action="STOP"))
-                else:
+                self.sign_ctrl.execute_stop()
+                if self._can_release_stop(has_stop):
                     self.state = FusionState.LANE_FOLLOWING
                     self._consecutive_lane_valid = 0
-                    print("[NAV] Biển STOP đã biến mất → Tiếp tục lộ trình")
+                    print("[NAV] Đã giữ STOP đủ thời gian → Tiếp tục lộ trình")
+                else:
+                    return self._status("NAV: holding STOP safely",
+                                        nav_info=self._nav_info(action="STOP"))
 
             return self._update_navigation(
                 frame, detected_signs,
@@ -189,17 +193,38 @@ class FusionController:
         # 1. Quét ArUco trong khung hình
         marker_ids = self.aruco_detector.detect(frame)
 
-        # 2. Nếu phát hiện Marker mới
-        if marker_ids:
-            marker_id = marker_ids[0]  # Lấy marker đầu tiên
+        # 2. A marker must disappear before the same ID can be accepted again.
+        # This debounces a marker in view while allowing a later revisit.
+        if not marker_ids:
+            self.last_seen_marker = None
+            return self._continue_current_action(
+                detected_signs, left_fit, right_fit, center_fitx, ploty, lane_valid
+            )
 
-            # Chỉ xử lý nếu đây là marker MỚI (tránh xử lý lặp lại cùng 1 marker)
-            if marker_id != self.last_seen_marker:
-                self.last_seen_marker = marker_id
-                return self._process_new_marker(
-                    marker_id, detected_signs,
-                    left_fit, right_fit, center_fitx, ploty, lane_valid
+        valid_ids = [marker_id for marker_id in marker_ids if marker_id in self.router.graph]
+        if not valid_ids:
+            return self._continue_current_action(
+                detected_signs, left_fit, right_fit, center_fitx, ploty, lane_valid
+            )
+
+        # Once localized, only accept the expected adjacent node.  This avoids
+        # jumping to an unrelated marker when two markers are visible at once.
+        if self.curr_node is not None:
+            adjacent_ids = [marker_id for marker_id in valid_ids if marker_id in self.router.graph[self.curr_node]]
+            if not adjacent_ids:
+                return self._continue_current_action(
+                    detected_signs, left_fit, right_fit, center_fitx, ploty, lane_valid
                 )
+            marker_id = adjacent_ids[0]
+        else:
+            marker_id = valid_ids[0]
+
+        if marker_id != self.last_seen_marker:
+            self.last_seen_marker = marker_id
+            return self._process_new_marker(
+                marker_id, detected_signs,
+                left_fit, right_fit, center_fitx, ploty, lane_valid
+            )
 
         # 3. Không có marker mới → tiếp tục hành động hiện tại
         return self._continue_current_action(
@@ -385,8 +410,7 @@ class FusionController:
         # ----- LANE_FOLLOWING state -----
         if self.state == FusionState.LANE_FOLLOWING:
             if has_stop:
-                self.state = FusionState.STOPPED
-                self.sign_ctrl.execute_stop()
+                self._enter_stop()
                 return self._status("stop sign detected → STOPPED")
 
             if has_left:
@@ -406,9 +430,9 @@ class FusionController:
 
         # ----- STOPPED state -----
         if self.state == FusionState.STOPPED:
-            if has_stop:
-                self.sign_ctrl.execute_stop()
-                return self._status("stop sign still visible — holding stop")
+            self.sign_ctrl.execute_stop()
+            if not self._can_release_stop(has_stop):
+                return self._status("holding STOP safely")
 
             self.state = FusionState.LANE_FOLLOWING
             lane_result = self.lane_ctrl.update(
@@ -468,12 +492,40 @@ class FusionController:
         """Reset the fusion controller to its initial state."""
         self.state = FusionState.LANE_FOLLOWING
         self._consecutive_lane_valid = 0
+        self._reset_stop_guard()
         self.lane_ctrl.reset()
         self.cancel_navigation()
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _enter_stop(self):
+        """Latch a STOP command and start its minimum hold interval."""
+        self.state = FusionState.STOPPED
+        self._stop_started_at = time.monotonic()
+        self._consecutive_stop_clear = 0
+        self.sign_ctrl.execute_stop()
+
+    def _can_release_stop(self, has_stop):
+        """Only release after the sign is absent long enough and long enough."""
+        if has_stop:
+            self._consecutive_stop_clear = 0
+            return False
+
+        self._consecutive_stop_clear += 1
+        elapsed = 0.0 if self._stop_started_at is None else time.monotonic() - self._stop_started_at
+        if (
+            elapsed >= cfg.STOP_MIN_HOLD_SECONDS
+            and self._consecutive_stop_clear >= cfg.STOP_CLEAR_CONSECUTIVE_FRAMES
+        ):
+            self._reset_stop_guard()
+            return True
+        return False
+
+    def _reset_stop_guard(self):
+        self._stop_started_at = None
+        self._consecutive_stop_clear = 0
+
     def _nav_info(self, marker_id=None, action=None, next_node=None):
         """Tạo dict thông tin navigation cho Web Dashboard."""
         return {

@@ -62,12 +62,10 @@ void FSM_Update(uint16_t dist_left, uint16_t dist_right) {
     bool right_danger = forward_motion && (dist_right > 0 && dist_right <= DANGER_THRESHOLD_CM);
     bool uart_timeout = (HAL_GetTick() - last_valid_rx_tick > 100);
 
-    if (rpi_brake_request || (left_danger && right_danger) || uart_timeout) {
+    // A close obstacle on either side of the vehicle's forward envelope is
+    // sufficient to stop. Reducing speed on one sensor was not fail-safe.
+    if (rpi_brake_request || left_danger || right_danger || uart_timeout) {
         current_system_state = SYS_STATE_EMERGENCY_STOP;
-    } else if (left_danger) {
-        current_system_state = SYS_STATE_ALERT_LEFT;
-    } else if (right_danger) {
-        current_system_state = SYS_STATE_ALERT_RIGHT;
     } else {
         current_system_state = SYS_STATE_NORMAL;
     }

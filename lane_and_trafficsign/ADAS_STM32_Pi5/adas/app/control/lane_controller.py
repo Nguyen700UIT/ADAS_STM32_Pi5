@@ -218,9 +218,9 @@ class LaneController:
 
     def read_stm32_response(self):
         """
-        Đọc telemetry mới nhất
+        Lấy telemetry đã được main loop đọc một lần duy nhất.
         """
-        resp = self.uart.read_latest_telemetry()
+        resp = self.uart.get_latest_telemetry()
         if resp is not None:
             self.last_stm32_response = resp
         return self.last_stm32_response

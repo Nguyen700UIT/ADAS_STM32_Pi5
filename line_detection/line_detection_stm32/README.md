@@ -25,7 +25,7 @@ Firmware STM32 sử dụng cơ chế **DMA Circular Buffer** quét liên tục t
 | **0** | `header1` | `uint8_t` | 1 byte | Cố định **`0xAA`** (170) |
 | **1** | `header2` | `uint8_t` | 1 byte | Cố định **`0x55`** (85) |
 | **2** | `cmd_id` | `uint8_t` | 1 byte | ID của lệnh (Tùy chọn sử dụng làm marker) |
-| **3 - 4** | `target_speed` | `int16_t` | 2 bytes | Vận tốc mục tiêu (Có dấu). Ví dụ: `-3599` đến `3599`. |
+| **3 - 4** | `target_speed` | `int16_t` | 2 bytes | Tốc độ động cơ mục tiêu theo **RPM** (có dấu). STM32 dùng Encoder + PID để quy đổi thành PWM cho DRV8871. |
 | **5** | `steering_error` | `int8_t` | 1 byte | Góc lái mục tiêu: Từ **`-100`** (Kịch Trái) đến **`100`** (Kịch Phải). |
 | **6** | `brake_command` | `uint8_t` | 1 byte | **`1`**: Kích hoạt phanh khẩn cấp (E-Stop). <br>**`0`**: Chạy bình thường. |
 | **7** | `checksum` | `uint8_t` | 1 byte | Byte kiểm tra lỗi (8-bit Sum). |

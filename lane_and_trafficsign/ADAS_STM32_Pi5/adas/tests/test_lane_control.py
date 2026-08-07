@@ -84,18 +84,12 @@ def send_to_stm32(uart: UartConfiguration, offset: float, speed: int, flags: int
     steering_error = int(max(-100, min(100, normalized)))
     brake_command = 1 if speed == 0 else 0
 
-    packet = UartProtocol.pack_data(cmd_id, target_speed, steering_error, brake_command)
-    if packet:
-        return uart.send_raw_bytes(packet)
-    return False
+    return uart.send_data(cmd_id, target_speed, steering_error, brake_command)
 
 
 def read_stm32_response(uart: UartConfiguration) -> dict:
     """Read and parse a 9-byte response packet from STM32."""
-    raw = uart.read_raw_bytes(UartProtocol.RX_PACKET_SIZE)
-    if raw and len(raw) == UartProtocol.RX_PACKET_SIZE:
-        return UartProtocol.unpack_data(raw)
-    return None
+    return uart.read_latest_telemetry()
 
 
 # ---------------------------------------------------------------------------

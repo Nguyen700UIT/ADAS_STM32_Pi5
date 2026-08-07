@@ -133,8 +133,8 @@ class SignController:
     # Telemetry
     # ------------------------------------------------------------------
     def read_stm32_response(self):
-        """Read the latest telemetry packet from the STM32."""
-        resp = self.uart.read_latest_telemetry()
+        """Return cached telemetry; main.py is the sole serial reader."""
+        resp = self.uart.get_latest_telemetry()
         if resp is not None:
             self.last_stm32_response = resp
         return self.last_stm32_response

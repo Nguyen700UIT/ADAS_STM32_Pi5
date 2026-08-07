@@ -14,7 +14,7 @@ vehicle_state = {
     # ---- TX: Lệnh điều khiển từ Pi gửi xuống STM32 (8 bytes) ----
     # Theo protocol: [0xAA][0x55][cmd_id][target_speed_L][target_speed_H][steering_error][brake_command][checksum]
     "cmd_id": 0,
-    "target_speed": 0,          # int16: Vận tốc mục tiêu (PWM duty cycle)
+    "target_speed": 0,          # int16: Vận tốc mục tiêu (RPM)
     "steering_error": 0,        # int8: Góc lái [-100, 100]
     "brake_command": 0,         # uint8: 0=Chạy, 1=Phanh khẩn cấp
 

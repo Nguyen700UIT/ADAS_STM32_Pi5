@@ -35,6 +35,13 @@ def get_action(angle):
     else:
         return "TURN_LEFT"
 
+
+ACTION_TO_ENUM = {
+    "FORWARD": "STRAIGHT",
+    "TURN_LEFT": "TURN_LEFT",
+    "TURN_RIGHT": "TURN_RIGHT",
+}
+
 def mouse_callback(event, x, y, flags, param):
     global next_intersection_id, next_endpoint_id, selected_node, nodes, edges
     
@@ -116,11 +123,22 @@ def export_config():
                 if a != c:
                     angle = calculate_angle(nodes[a], nodes[b], nodes[c])
                     action = get_action(angle)
-                    action_map[f"{a}_{b}_{c}"] = action
+                    action_map[(a, b, c)] = action
                     
     # 3. Ghi ra file
-    output_str = "# Đây là file được tạo tự động bởi tool\n"
-    output_str += "# Đặt file này vào thư mục: config/map_config.py\n\n"
+    output_str = "# Đây là file được tạo tự động bởi map_tool.py\n"
+    output_str += "# Có thể copy trực tiếp vào app/config/map_config.py.\n\n"
+    output_str += "from enum import Enum\n\n"
+    output_str += "class TurnAction(Enum):\n"
+    output_str += "    STRAIGHT = 'straight'\n"
+    output_str += "    TURN_LEFT = 'turn_left'\n"
+    output_str += "    TURN_RIGHT = 'turn_right'\n\n"
+    output_str += "DIRECTION_NODE_MAX_ID = 49\n"
+    output_str += "DESTINATION_NODE_MIN_ID = 50\n\n"
+    output_str += "def is_destination_node(node_id: int) -> bool:\n"
+    output_str += "    return node_id >= DESTINATION_NODE_MIN_ID\n\n"
+    output_str += "def is_direction_node(node_id: int) -> bool:\n"
+    output_str += "    return 1 <= node_id <= DIRECTION_NODE_MAX_ID\n\n"
     
     output_str += "GRAPH = {\n"
     for k, v in graph.items():
@@ -128,10 +146,14 @@ def export_config():
     output_str += "}\n\n"
     
     output_str += "ACTION_MAP = {\n"
-    for k, v in action_map.items():
-        parts = k.split('_')
-        output_str += f"    ({parts[0]}, {parts[1]}, {parts[2]}): '{v}',\n"
-    output_str += "}\n"
+    for key, action in action_map.items():
+        output_str += f"    {key}: TurnAction.{ACTION_TO_ENUM[action]},\n"
+    output_str += "}\n\n"
+    output_str += "def get_action(prev_node: int, curr_node: int, next_node: int) -> TurnAction:\n"
+    output_str += "    key = (prev_node, curr_node, next_node)\n"
+    output_str += "    if key not in ACTION_MAP:\n"
+    output_str += "        raise KeyError(f'Không tìm thấy hành động cho bộ ba {key}.')\n"
+    output_str += "    return ACTION_MAP[key]\n"
     
     with open('map_config_generated.py', 'w', encoding='utf-8') as f:
         f.write(output_str)

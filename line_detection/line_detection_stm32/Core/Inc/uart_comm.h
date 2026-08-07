@@ -8,7 +8,7 @@
 
 #define UART_HEADER1 0xAA
 #define UART_HEADER2 0x55
-#define DANGER_THRESHOLD_CM 20
+#define DANGER_THRESHOLD_CM 20  // Any sensor at/below this distance => E-stop.
 #define RX_BUF_SIZE 64
 
 #pragma pack(push, 1)
